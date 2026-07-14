@@ -8,11 +8,14 @@ from sqlalchemy.orm import Session
 from hunt_board.admin.api import router as admin_router
 from hunt_board.api.ingest import router as ingest_router
 from hunt_board.api.jobs import router as jobs_router
+from hunt_board.api.preferences import router as preferences_router
 from hunt_board.db.session import get_db
+from hunt_board.notifications.api import router as notifications_router
+from hunt_board.tracking.api import router as tracking_router
 
 
 def create_app() -> FastAPI:
-    app = FastAPI(title="Hunt Board", version="0.1.0")
+    app = FastAPI(title="Hunt Board", version="0.2.0")
 
     @app.get("/health")
     def health() -> dict[str, str]:
@@ -28,6 +31,12 @@ def create_app() -> FastAPI:
 
     app.include_router(jobs_router)
     app.include_router(jobs_router, prefix="/api", include_in_schema=False)
+    app.include_router(preferences_router)
+    app.include_router(preferences_router, prefix="/api", include_in_schema=False)
+    app.include_router(tracking_router)
+    app.include_router(tracking_router, prefix="/api", include_in_schema=False)
+    app.include_router(notifications_router)
+    app.include_router(notifications_router, prefix="/api", include_in_schema=False)
     app.include_router(ingest_router)
     app.include_router(admin_router)
     app.include_router(admin_router, prefix="/api", include_in_schema=False)

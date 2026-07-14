@@ -16,7 +16,12 @@ router = APIRouter(prefix="/api/ingest", tags=["ingestion"])
 @router.post("/run", response_model=IngestRunResponse)
 async def run_ingestion(payload: IngestRunRequest, db: Session = Depends(get_db)) -> dict:
     settings = get_settings()
-    service = IngestionService(str(settings.sources_path), settings.http_timeout_seconds)
+    service = IngestionService(
+        str(settings.sources_path),
+        settings.http_timeout_seconds,
+        settings.source_concurrency,
+        settings.http_max_retries,
+        settings.http_retry_backoff_seconds,
+    )
     summary = await service.run(db, payload.source_slugs, payload.dry_run)
     return asdict(summary)
-

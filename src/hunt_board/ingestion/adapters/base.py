@@ -1,5 +1,6 @@
 from __future__ import annotations
 
+import asyncio
 import re
 from dataclasses import dataclass
 from datetime import datetime, timezone
@@ -77,13 +78,40 @@ class ATSAdapter(Protocol):
 
 
 class HttpATSAdapter:
-    def __init__(self, client: httpx.AsyncClient) -> None:
+    TRANSIENT_STATUS_CODES = {408, 425, 429, 500, 502, 503, 504}
+
+    def __init__(
+        self,
+        client: httpx.AsyncClient,
+        max_retries: int = 2,
+        retry_backoff_seconds: float = 0.5,
+    ) -> None:
         self.client = client
+        self.max_retries = max(0, max_retries)
+        self.retry_backoff_seconds = max(0, retry_backoff_seconds)
 
     async def get_json(self, url: str) -> Any:
-        try:
-            response = await self.client.get(url)
-            response.raise_for_status()
-        except httpx.HTTPError as exc:
-            raise AdapterError(f"ATS request failed: {exc}") from exc
-        return response.json()
+        for attempt in range(self.max_retries + 1):
+            error: httpx.HTTPError
+            try:
+                response = await self.client.get(url)
+                response.raise_for_status()
+                return response.json()
+            except (httpx.TimeoutException, httpx.NetworkError) as exc:
+                error = exc
+                should_retry = attempt < self.max_retries
+            except httpx.HTTPStatusError as exc:
+                error = exc
+                should_retry = (
+                    exc.response.status_code in self.TRANSIENT_STATUS_CODES
+                    and attempt < self.max_retries
+                )
+            except httpx.HTTPError as exc:
+                error = exc
+                should_retry = False
+
+            if not should_retry:
+                raise AdapterError(f"ATS request failed after {attempt + 1} attempt(s): {error}") from error
+            await asyncio.sleep(self.retry_backoff_seconds * (2**attempt))
+
+        raise AssertionError("unreachable")

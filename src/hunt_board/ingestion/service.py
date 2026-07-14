@@ -1,5 +1,6 @@
 from __future__ import annotations
 
+import asyncio
 import hashlib
 from dataclasses import dataclass, field
 from datetime import datetime, timedelta, timezone
@@ -10,10 +11,13 @@ from sqlalchemy import select
 from sqlalchemy.orm import Session
 
 from hunt_board.db.models import (
+    Application,
     DuplicateReview,
     JobMatch,
     JobPosting,
     JobVersion,
+    Notification,
+    SavedJob,
     ScrapeRun,
     ScrapeSourceRun,
     Source,
@@ -43,6 +47,7 @@ class SourceIngestionSummary:
     upserted_count: int = 0
     new_jobs: int = 0
     updated_jobs: int = 0
+    unchanged_jobs: int = 0
     closed_count: int = 0
     duplicates_found: int = 0
     error_count: int = 0
@@ -59,6 +64,7 @@ class IngestionSummary:
     total_upserted: int = 0
     total_new_jobs: int = 0
     total_updated_jobs: int = 0
+    total_unchanged_jobs: int = 0
     total_closed: int = 0
     total_duplicates: int = 0
     total_errors: int = 0
@@ -67,15 +73,30 @@ class IngestionSummary:
     source_runs: list[SourceIngestionSummary] = field(default_factory=list)
 
 
+@dataclass
+class _SourceFetchResult:
+    source: SourceConfig
+    started_at: datetime
+    finished_at: datetime
+    jobs: list[NormalizedJob] = field(default_factory=list)
+    error_message: str | None = None
+
+
 class IngestionService:
     def __init__(
         self,
         sources_path: str,
-        timeout_seconds: float = 20,
+        timeout_seconds: float = 10,
+        source_concurrency: int = 5,
+        max_retries: int = 2,
+        retry_backoff_seconds: float = 0.5,
         adapter_overrides: dict[str, ATSAdapter] | None = None,
     ) -> None:
         self.sources_path = sources_path
         self.timeout_seconds = timeout_seconds
+        self.source_concurrency = max(1, source_concurrency)
+        self.max_retries = max(0, max_retries)
+        self.retry_backoff_seconds = max(0, retry_backoff_seconds)
         self.adapter_overrides = adapter_overrides or {}
 
     async def run(
@@ -106,14 +127,20 @@ class IngestionService:
             db.flush()
             summary.scrape_run_id = scrape_run.id
 
-        async with httpx.AsyncClient(timeout=self.timeout_seconds) as client:
-            for source_config in source_configs:
-                source_summary = await self._ingest_source(db, source_config, client, scrape_run, dry_run)
+        limits = httpx.Limits(max_connections=self.source_concurrency, max_keepalive_connections=self.source_concurrency)
+        async with httpx.AsyncClient(timeout=self.timeout_seconds, limits=limits) as client:
+            semaphore = asyncio.Semaphore(self.source_concurrency)
+            fetch_results = await asyncio.gather(
+                *(self._fetch_source(source, client, semaphore) for source in source_configs)
+            )
+            for fetch_result in fetch_results:
+                source_summary = self._process_source(db, fetch_result, scrape_run, dry_run)
                 summary.source_runs.append(source_summary)
                 summary.total_fetched += source_summary.fetched_count
                 summary.total_upserted += source_summary.upserted_count
                 summary.total_new_jobs += source_summary.new_jobs
                 summary.total_updated_jobs += source_summary.updated_jobs
+                summary.total_unchanged_jobs += source_summary.unchanged_jobs
                 summary.total_closed += source_summary.closed_count
                 summary.total_duplicates += source_summary.duplicates_found
                 summary.total_errors += source_summary.error_count
@@ -131,6 +158,7 @@ class IngestionService:
             scrape_run.total_jobs_seen = summary.total_fetched
             scrape_run.total_new_jobs = summary.total_new_jobs
             scrape_run.total_updated_jobs = summary.total_updated_jobs
+            scrape_run.total_unchanged_jobs = summary.total_unchanged_jobs
             scrape_run.total_closed_jobs = summary.total_closed
             scrape_run.total_duplicates = summary.total_duplicates
             # Retain the original aggregate names for existing API clients.
@@ -143,17 +171,45 @@ class IngestionService:
             db.commit()
         return summary
 
-    async def _ingest_source(
+    async def _fetch_source(
         self,
-        db: Session,
         source_config: SourceConfig,
         client: httpx.AsyncClient,
+        semaphore: asyncio.Semaphore,
+    ) -> _SourceFetchResult:
+        started_at = datetime.now(timezone.utc)
+        try:
+            async with semaphore:
+                adapter = self._adapter_for(source_config, client)
+                jobs = await adapter.fetch_jobs(source_config)
+            return _SourceFetchResult(
+                source=source_config,
+                started_at=started_at,
+                finished_at=datetime.now(timezone.utc),
+                jobs=jobs,
+            )
+        except Exception as exc:  # each fetch is isolated so other sources can finish
+            return _SourceFetchResult(
+                source=source_config,
+                started_at=started_at,
+                finished_at=datetime.now(timezone.utc),
+                error_message=str(exc),
+            )
+
+    def _process_source(
+        self,
+        db: Session,
+        fetch_result: _SourceFetchResult,
         scrape_run: ScrapeRun | None,
         dry_run: bool,
     ) -> SourceIngestionSummary:
-        started = perf_counter()
+        source_config = fetch_result.source
         source_row = self._ensure_source(db, source_config, dry_run)
-        source_summary = SourceIngestionSummary(source_slug=source_config.slug, status="running")
+        source_summary = SourceIngestionSummary(
+            source_slug=source_config.slug,
+            status="running",
+            fetched_count=len(fetch_result.jobs),
+        )
         source_run: ScrapeSourceRun | None = None
         if scrape_run:
             source_run = ScrapeSourceRun(
@@ -161,37 +217,55 @@ class IngestionService:
                 source_id=source_row.id if source_row else None,
                 source_slug=source_config.slug,
                 status="running",
+                started_at=fetch_result.started_at,
             )
             db.add(source_run)
             db.flush()
 
         try:
+            if fetch_result.error_message:
+                raise RuntimeError(fetch_result.error_message)
             with db.begin_nested():
-                adapter = self._adapter_for(source_config, client)
-                jobs = await adapter.fetch_jobs(source_config)
-                source_summary.fetched_count = len(jobs)
-                seen_external_ids = {job.external_job_id for job in jobs}
+                seen_external_ids = {job.external_job_id for job in fetch_result.jobs}
                 preferences = self._preferences(db)
-                for job in jobs:
+                for job in fetch_result.jobs:
                     ranking = rank_job(job, preferences, source_config.priority)
                     decision = decide_dedupe(db, source_row, job)
                     if decision.reason == "same canonical apply_url":
                         source_summary.duplicates_found += 1
                     if dry_run:
-                        if decision.action == "upsert":
-                            source_summary.updated_jobs += 1
+                        if (
+                            decision.action == "upsert"
+                            and decision.existing_job is not None
+                            and not decision.reactivated
+                            and not self._job_changed(decision.existing_job, job, ranking)
+                        ):
+                            outcome = "unchanged"
+                        elif decision.action == "upsert":
+                            outcome = "updated"
                         else:
+                            outcome = "new"
+                        if outcome == "updated":
+                            source_summary.updated_jobs += 1
+                        elif outcome == "new":
                             source_summary.new_jobs += 1
+                        else:
+                            source_summary.unchanged_jobs += 1
                         if decision.action == "possible_duplicate":
                             source_summary.duplicates_found += 1
                     elif source_row:
-                        outcome, duplicate_found = self._upsert_job(db, source_row, job, ranking, decision)
+                        outcome, duplicate_found = self._upsert_job(
+                            db, source_row, job, ranking, decision, scrape_run
+                        )
                         if outcome == "new":
                             source_summary.new_jobs += 1
-                        else:
+                        elif outcome == "updated":
                             source_summary.updated_jobs += 1
+                        else:
+                            source_summary.unchanged_jobs += 1
                         source_summary.duplicates_found += int(duplicate_found)
-                    source_summary.upserted_count += 1
+                    if outcome != "unchanged":
+                        source_summary.upserted_count += 1
                 if not dry_run and source_row:
                     source_summary.closed_count = self._mark_closed(db, source_row, seen_external_ids)
             source_summary.status = "completed"
@@ -199,6 +273,7 @@ class IngestionService:
                 source_row.health_status = "healthy"
                 source_row.consecutive_failures = 0
                 source_row.last_successful_at = datetime.now(timezone.utc)
+                source_row.last_error = None
                 source_row.next_due_at = self._next_due(source_config.priority)
         except Exception as exc:  # adapters isolate one source failure from the rest of the run
             source_summary.status = "failed"
@@ -212,14 +287,22 @@ class IngestionService:
             if source_row and not dry_run:
                 source_row.health_status = "unhealthy"
                 source_row.consecutive_failures += 1
+                source_row.last_error = source_summary.error_message
                 source_row.next_due_at = datetime.now(timezone.utc) + timedelta(hours=24)
 
-        source_summary.duration_ms = round((perf_counter() - started) * 1000)
+        finished_at = datetime.now(timezone.utc)
+        if source_row and not dry_run:
+            source_row.last_checked_at = finished_at
+        source_summary.duration_ms = max(
+            0,
+            round((finished_at - fetch_result.started_at).total_seconds() * 1000),
+        )
         if source_run:
             source_run.status = source_summary.status
             source_run.jobs_seen = source_summary.fetched_count
             source_run.new_jobs = source_summary.new_jobs
             source_run.updated_jobs = source_summary.updated_jobs
+            source_run.unchanged_jobs = source_summary.unchanged_jobs
             source_run.closed_jobs = source_summary.closed_count
             source_run.duplicates_found = source_summary.duplicates_found
             source_run.fetched_count = source_summary.fetched_count
@@ -227,7 +310,7 @@ class IngestionService:
             source_run.closed_count = source_summary.closed_count
             source_run.error_count = source_summary.error_count
             source_run.error_message = source_summary.error_message
-            source_run.finished_at = datetime.now(timezone.utc)
+            source_run.finished_at = finished_at
             source_run.duration_ms = source_summary.duration_ms
             db.flush()
         return source_summary
@@ -236,7 +319,11 @@ class IngestionService:
         override = self.adapter_overrides.get(source_config.slug)
         if override:
             return override
-        return ADAPTERS[source_config.ats](client)
+        return ADAPTERS[source_config.ats](
+            client,
+            max_retries=self.max_retries,
+            retry_backoff_seconds=self.retry_backoff_seconds,
+        )
 
     def _ensure_source(self, db: Session, source_config: SourceConfig, dry_run: bool) -> Source | None:
         existing = db.scalar(select(Source).where(Source.slug == source_config.slug))
@@ -278,6 +365,7 @@ class IngestionService:
                 radius_miles=preference.radius_miles,
                 country=preference.country,
                 remote_allowed=preference.remote_allowed,
+                minimum_score_threshold=preference.minimum_score_threshold,
             )
         user = db.scalar(select(User).order_by(User.id))
         return UserPreferences.model_validate(user.preferences_json or {}) if user else UserPreferences()
@@ -289,9 +377,22 @@ class IngestionService:
         job: NormalizedJob,
         ranking: RankingResult,
         decision: DedupeDecision,
+        scrape_run: ScrapeRun | None,
     ) -> tuple[str, bool]:
         now = datetime.now(timezone.utc)
         target = decision.existing_job if decision.action == "upsert" else None
+        if (
+            target is not None
+            and not decision.reactivated
+            and not self._job_changed(target, job, ranking)
+        ):
+            # The normalized posting is unchanged; only observation metadata must move.
+            target.last_seen_at = now
+            target.consecutive_missed_runs = 0
+            target.raw_json = job.raw_json
+            target.raw_json_expires_at = now + timedelta(days=RAW_JSON_RETENTION_DAYS)
+            db.flush()
+            return "unchanged", False
         outcome = "updated" if target else "new"
         if target is None:
             target = JobPosting(
@@ -336,7 +437,7 @@ class IngestionService:
         target.ranking_reasons = ranking.reasons
         target.raw_json = job.raw_json
         target.raw_json_expires_at = now + timedelta(days=RAW_JSON_RETENTION_DAYS)
-        self._record_version(db, target, job)
+        version = self._record_version(db, target, job)
 
         duplicate_found = decision.action == "possible_duplicate" and decision.existing_job is not None
         if duplicate_found:
@@ -367,15 +468,54 @@ class IngestionService:
             target.duplicate_status = "unique"
             target.duplicate_of_job_id = None
         self._record_match(db, target, ranking)
+        self._record_notifications(
+            db,
+            target,
+            ranking,
+            outcome=outcome,
+            reactivated=decision.reactivated,
+            changed_version=version if outcome == "updated" else None,
+            scrape_run=scrape_run,
+        )
         db.flush()
         return outcome, duplicate_found
 
+    @classmethod
+    def _job_changed(
+        cls,
+        target: JobPosting,
+        job: NormalizedJob,
+        ranking: RankingResult,
+    ) -> bool:
+        location = cls._display_location(job)
+        expected_posted_at = job.posted_at or target.posted_at or target.first_seen_at
+        relevant_values = (
+            (target.company_name, job.company_name),
+            (target.title, job.title),
+            (target.normalized_title, normalize_text(job.title) or ""),
+            (target.location, location),
+            (target.normalized_location, normalize_text(location)),
+            (target.department, job.department),
+            (target.employment_type, job.employment_type),
+            (target.workplace_type, job.workplace_type),
+            (target.posting_url, job.posting_url),
+            (target.apply_url, job.apply_url),
+            (target.canonical_apply_url, canonicalize_url(job.apply_url)),
+            (target.description_html, job.description_html),
+            (target.description_text, job.description_text),
+            (target.posted_at, expected_posted_at),
+            (target.source_updated_at, job.updated_at),
+            (target.ranking_score, ranking.score),
+            (target.ranking_reasons, ranking.reasons),
+        )
+        return not target.active or any(current != incoming for current, incoming in relevant_values)
+
     @staticmethod
-    def _record_version(db: Session, target: JobPosting, job: NormalizedJob) -> None:
+    def _record_version(db: Session, target: JobPosting, job: NormalizedJob) -> JobVersion | None:
         description = job.description_text or job.description_html or ""
         description_hash = hashlib.sha256(description.encode("utf-8")).hexdigest()
         if target.description_hash == description_hash:
-            return
+            return None
         target.description_hash = description_hash
         target.description_html = job.description_html
         target.description_text = job.description_text
@@ -387,16 +527,113 @@ class IngestionService:
             )
         )
         if not existing_version:
-            db.add(
-                JobVersion(
-                    job_posting_id=target.id,
-                    description_hash=description_hash,
-                    description_html=job.description_html,
-                    description_text=job.description_text,
-                    raw_json=job.raw_json,
-                    raw_json_expires_at=datetime.now(timezone.utc) + timedelta(days=RAW_JSON_RETENTION_DAYS),
-                )
+            existing_version = JobVersion(
+                job_posting_id=target.id,
+                description_hash=description_hash,
+                description_html=job.description_html,
+                description_text=job.description_text,
+                raw_json=job.raw_json,
+                raw_json_expires_at=datetime.now(timezone.utc) + timedelta(days=RAW_JSON_RETENTION_DAYS),
             )
+            db.add(existing_version)
+            db.flush()
+        return existing_version
+
+    @classmethod
+    def _record_notifications(
+        cls,
+        db: Session,
+        job: JobPosting,
+        ranking: RankingResult,
+        *,
+        outcome: str,
+        reactivated: bool,
+        changed_version: JobVersion | None,
+        scrape_run: ScrapeRun | None,
+    ) -> None:
+        user = db.scalar(select(User).where(User.is_active.is_(True)).order_by(User.id))
+        if user is None:
+            return
+        preference = db.scalar(select(UserPreference).where(UserPreference.user_id == user.id))
+        threshold = preference.minimum_score_threshold if preference else UserPreferences().minimum_score_threshold
+        qualifies = (
+            job.active
+            and job.duplicate_status != "duplicate"
+            and ranking.matched
+            and ranking.score >= threshold
+        )
+        if outcome == "new" and qualifies:
+            cls._add_notification(
+                db,
+                user_id=user.id,
+                job=job,
+                scrape_run=scrape_run,
+                kind="new_match",
+                dedupe_key=f"new_match:{user.id}:{job.id}",
+                message="New job match above your score threshold",
+            )
+        if reactivated and qualifies and job.reposted_at is not None:
+            cls._add_notification(
+                db,
+                user_id=user.id,
+                job=job,
+                scrape_run=scrape_run,
+                kind="reposted_job",
+                dedupe_key=f"reposted_job:{user.id}:{job.id}:{job.reposted_at.isoformat()}",
+                message="A matching job was reposted or reactivated",
+            )
+        if changed_version is not None:
+            is_tracked = db.scalar(
+                select(SavedJob.id).where(
+                    SavedJob.user_id == user.id,
+                    SavedJob.job_posting_id == job.id,
+                )
+            ) is not None or db.scalar(
+                select(Application.id).where(
+                    Application.user_id == user.id,
+                    Application.job_posting_id == job.id,
+                )
+            ) is not None
+            if is_tracked:
+                cls._add_notification(
+                    db,
+                    user_id=user.id,
+                    job=job,
+                    scrape_run=scrape_run,
+                    kind="job_updated",
+                    dedupe_key=f"job_updated:{user.id}:{job.id}:{changed_version.id}",
+                    message="A saved or applied job changed",
+                )
+
+    @staticmethod
+    def _add_notification(
+        db: Session,
+        *,
+        user_id: int,
+        job: JobPosting,
+        scrape_run: ScrapeRun | None,
+        kind: str,
+        dedupe_key: str,
+        message: str,
+    ) -> None:
+        if db.scalar(select(Notification.id).where(Notification.dedupe_key == dedupe_key)) is not None:
+            return
+        db.add(
+            Notification(
+                user_id=user_id,
+                job_posting_id=job.id,
+                scrape_run_id=scrape_run.id if scrape_run else None,
+                kind=kind,
+                dedupe_key=dedupe_key,
+                payload_json={
+                    "job_id": job.id,
+                    "title": job.title,
+                    "company_name": job.company_name,
+                    "ranking_score": job.ranking_score,
+                    "message": message,
+                },
+            )
+        )
 
     @staticmethod
     def _record_match(db: Session, target: JobPosting, ranking: RankingResult) -> None:

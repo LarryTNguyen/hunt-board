@@ -72,3 +72,27 @@ async def test_ashby_adapter_normalizes_fixture() -> None:
     assert jobs[0].location == "Remote"
     assert jobs[0].description_text == "Own platform services."
 
+
+@pytest.mark.asyncio()
+async def test_adapter_retries_transient_failures() -> None:
+    attempts = 0
+
+    def handler(request: httpx.Request) -> httpx.Response:
+        nonlocal attempts
+        attempts += 1
+        if attempts < 3:
+            return httpx.Response(503, request=request)
+        return httpx.Response(200, json={"jobs": []}, request=request)
+
+    source = SourceConfig(
+        slug="acme-gh",
+        name="Acme GH",
+        ats="greenhouse",
+        company_name="Acme",
+        config={"board_token": "acme"},
+    )
+    async with httpx.AsyncClient(transport=httpx.MockTransport(handler)) as client:
+        jobs = await GreenhouseAdapter(client, max_retries=2, retry_backoff_seconds=0).fetch_jobs(source)
+
+    assert jobs == []
+    assert attempts == 3

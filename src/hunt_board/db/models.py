@@ -50,6 +50,7 @@ class UserPreference(TimestampMixin, Base):
     radius_miles: Mapped[int] = mapped_column(Integer, default=60, nullable=False)
     country: Mapped[str] = mapped_column(String(120), default="USA", nullable=False)
     remote_allowed: Mapped[bool] = mapped_column(Boolean, default=True, nullable=False)
+    minimum_score_threshold: Mapped[float] = mapped_column(Float, default=60, nullable=False)
 
     user: Mapped[User] = relationship(back_populates="preference")
 
@@ -70,7 +71,9 @@ class Source(TimestampMixin, Base):
     config_json: Mapped[dict[str, Any]] = mapped_column(JSON, default=dict, nullable=False)
     health_status: Mapped[str] = mapped_column(String(40), default="unknown", nullable=False)
     consecutive_failures: Mapped[int] = mapped_column(Integer, default=0, nullable=False)
+    last_checked_at: Mapped[datetime | None] = mapped_column(DateTime(timezone=True))
     last_successful_at: Mapped[datetime | None] = mapped_column(DateTime(timezone=True))
+    last_error: Mapped[str | None] = mapped_column(Text)
     next_due_at: Mapped[datetime | None] = mapped_column(DateTime(timezone=True))
 
     job_postings: Mapped[list[JobPosting]] = relationship(back_populates="source")
@@ -83,6 +86,10 @@ class JobPosting(TimestampMixin, Base):
         Index("ix_job_postings_active", "active"),
         Index("ix_job_postings_canonical_apply_url", "canonical_apply_url"),
         Index("ix_job_postings_company_title_location", "company_name", "normalized_title", "normalized_location"),
+        Index("ix_job_postings_posted_at", "posted_at"),
+        Index("ix_job_postings_company_name", "company_name"),
+        Index("ix_job_postings_title", "title"),
+        Index("ix_job_postings_location", "location"),
     )
 
     id: Mapped[int] = mapped_column(Integer, primary_key=True)
@@ -179,7 +186,9 @@ class Application(TimestampMixin, Base):
     user_id: Mapped[int] = mapped_column(ForeignKey("users.id"), nullable=False)
     job_posting_id: Mapped[int] = mapped_column(ForeignKey("job_postings.id"), nullable=False)
     status_id: Mapped[int | None] = mapped_column(ForeignKey("application_statuses.id"))
-    status: Mapped[str] = mapped_column(String(80), default="saved", nullable=False)
+    # status_id is canonical. This slug is retained as a compatibility snapshot
+    # for clients created against the Milestone 1 schema.
+    status: Mapped[str] = mapped_column(String(80), default="applied", nullable=False)
     notes: Mapped[str | None] = mapped_column(Text)
 
     user: Mapped[User] = relationship(back_populates="applications")
@@ -193,16 +202,22 @@ class ApplicationEvent(TimestampMixin, Base):
     application_id: Mapped[int] = mapped_column(ForeignKey("applications.id"), nullable=False)
     status_id: Mapped[int | None] = mapped_column(ForeignKey("application_statuses.id"))
     event_type: Mapped[str] = mapped_column(String(80), default="status_changed", nullable=False)
+    old_status: Mapped[str | None] = mapped_column(String(120))
+    new_status: Mapped[str | None] = mapped_column(String(120))
     notes: Mapped[str | None] = mapped_column(Text)
     occurred_at: Mapped[datetime] = mapped_column(DateTime(timezone=True), default=utcnow, nullable=False)
 
 
 class Notification(TimestampMixin, Base):
     __tablename__ = "notifications"
+    __table_args__ = (UniqueConstraint("dedupe_key", name="uq_notifications_dedupe_key"),)
 
     id: Mapped[int] = mapped_column(Integer, primary_key=True)
     user_id: Mapped[int] = mapped_column(ForeignKey("users.id"), nullable=False)
+    job_posting_id: Mapped[int | None] = mapped_column(ForeignKey("job_postings.id"))
+    scrape_run_id: Mapped[int | None] = mapped_column(ForeignKey("scrape_runs.id"))
     kind: Mapped[str] = mapped_column(String(80), nullable=False)
+    dedupe_key: Mapped[str] = mapped_column(String(500), nullable=False)
     payload_json: Mapped[dict[str, Any]] = mapped_column(JSON, default=dict, nullable=False)
     read_at: Mapped[datetime | None] = mapped_column(DateTime(timezone=True))
 
@@ -232,6 +247,7 @@ class ScrapeRun(TimestampMixin, Base):
     total_jobs_seen: Mapped[int] = mapped_column(Integer, default=0, nullable=False)
     total_new_jobs: Mapped[int] = mapped_column(Integer, default=0, nullable=False)
     total_updated_jobs: Mapped[int] = mapped_column(Integer, default=0, nullable=False)
+    total_unchanged_jobs: Mapped[int] = mapped_column(Integer, default=0, nullable=False)
     total_closed_jobs: Mapped[int] = mapped_column(Integer, default=0, nullable=False)
     total_duplicates: Mapped[int] = mapped_column(Integer, default=0, nullable=False)
     total_fetched: Mapped[int] = mapped_column(Integer, default=0, nullable=False)
@@ -256,6 +272,7 @@ class ScrapeSourceRun(TimestampMixin, Base):
     jobs_seen: Mapped[int] = mapped_column(Integer, default=0, nullable=False)
     new_jobs: Mapped[int] = mapped_column(Integer, default=0, nullable=False)
     updated_jobs: Mapped[int] = mapped_column(Integer, default=0, nullable=False)
+    unchanged_jobs: Mapped[int] = mapped_column(Integer, default=0, nullable=False)
     closed_jobs: Mapped[int] = mapped_column(Integer, default=0, nullable=False)
     duplicates_found: Mapped[int] = mapped_column(Integer, default=0, nullable=False)
     fetched_count: Mapped[int] = mapped_column(Integer, default=0, nullable=False)
