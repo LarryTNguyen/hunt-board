@@ -1,0 +1,14 @@
+sources:
+  - slug: active
+    name: Active
+    ats: greenhouse
+    company_name: Active Co
+    enabled: true
+    config: {board_token: active}
+  - slug: disabled
+    name: Disabled
+    ats: lever
+    company_name: Disabled Co
+    enabled: false
+    config: {site: disabled}
+

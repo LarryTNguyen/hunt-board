@@ -1,0 +1,9 @@
+sources:
+  - slug: acme
+    name: Acme
+    ats: greenhouse
+    company_name: Acme
+    enabled: true
+    priority: 3
+    config: {board_token: acme}
+

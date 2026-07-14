@@ -1,0 +1,11 @@
+- company_name: Stripe
+  careers_url: https://stripe.com/jobs
+  ats_type: greenhouse
+  ats_slug: stripe
+  priority: high
+  enabled: true
+  categories:
+    - software
+    - data
+    - ml
+  notes: curated

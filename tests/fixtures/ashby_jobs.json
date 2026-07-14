@@ -1,0 +1,16 @@
+{
+  "jobs": [
+    {
+      "id": "ash-1",
+      "title": "Python Platform Engineer",
+      "locationName": "Remote",
+      "departmentName": "Engineering",
+      "employmentType": "Full-time",
+      "workplaceType": "remote",
+      "applyUrl": "https://jobs.ashbyhq.com/acme/ash-1",
+      "descriptionHtml": "<p>Own platform services.</p>",
+      "publishedAt": "2026-07-02T12:00:00Z"
+    }
+  ]
+}
+

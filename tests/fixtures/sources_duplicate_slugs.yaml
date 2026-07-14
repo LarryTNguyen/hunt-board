@@ -1,0 +1,12 @@
+sources:
+  - slug: acme
+    name: Acme
+    ats: greenhouse
+    company_name: Acme
+    config: {board_token: acme}
+  - slug: acme
+    name: Acme Again
+    ats: lever
+    company_name: Acme
+    config: {site: acme}
+
