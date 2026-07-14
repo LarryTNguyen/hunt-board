@@ -56,6 +56,7 @@ def seed_milestone_one(db: Session, email: str, sources_path: str) -> SeedResult
             radius_miles=defaults.radius_miles,
             country=defaults.country,
             remote_allowed=defaults.remote_allowed,
+            minimum_score_threshold=defaults.minimum_score_threshold,
         )
         db.add(preference)
 

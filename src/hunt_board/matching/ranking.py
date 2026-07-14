@@ -36,6 +36,7 @@ class UserPreferences(BaseModel):
     radius_miles: int = 60
     country: str = "USA"
     remote_allowed: bool = True
+    minimum_score_threshold: float = Field(default=60, ge=0, le=100)
 
 
 @dataclass(frozen=True)
@@ -96,6 +97,8 @@ def rank_job(job: NormalizedJob, preferences: UserPreferences | None = None, sou
 
     now = datetime.now(timezone.utc)
     seen_at = job.posted_at or now
+    if seen_at.tzinfo is None:
+        seen_at = seen_at.replace(tzinfo=timezone.utc)
     age_days = max((now - seen_at).days, 0)
     freshness_score = max(0, 20 - min(age_days, 20))
     reasons.append(f"freshness age_days={age_days}")

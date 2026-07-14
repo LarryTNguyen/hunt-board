@@ -26,7 +26,13 @@ def build_parser() -> argparse.ArgumentParser:
 async def _ingest(sources: list[str] | None, dry_run: bool) -> dict:
     settings = get_settings()
     with SessionLocal() as db:
-        service = IngestionService(str(settings.sources_path), settings.http_timeout_seconds)
+        service = IngestionService(
+            str(settings.sources_path),
+            settings.http_timeout_seconds,
+            settings.source_concurrency,
+            settings.http_max_retries,
+            settings.http_retry_backoff_seconds,
+        )
         return asdict(await service.run(db, sources, dry_run, triggered_by="cli"))
 
 
