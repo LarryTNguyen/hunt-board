@@ -1,0 +1,56 @@
+# Python bytecode and caches
+__pycache__/
+*.py[codz]
+*$py.class
+
+# Virtual environments
+.venv/
+venv/
+env/
+ENV/
+
+# Environment variables and local secrets
+.env
+.env.*
+!.env.example
+
+# Test, coverage, and type-checking artifacts
+.pytest_cache/
+.pytest-tmp/
+.coverage
+.coverage.*
+coverage.xml
+htmlcov/
+.mypy_cache/
+.ruff_cache/
+.pyright/
+.hypothesis/
+
+# Packaging and build output
+build/
+dist/
+*.egg-info/
+.eggs/
+
+# Local databases and runtime output
+*.db
+*.sqlite
+*.sqlite3
+*.log
+postgres_data/
+
+# Editors and IDEs
+.idea/
+.vscode/
+*.swp
+*.swo
+*~
+
+# Operating-system files
+.DS_Store
+Thumbs.db
+Desktop.ini
+
+# Local Codex/agent state (keep AGENTS.md tracked)
+.agents/
+.codex/

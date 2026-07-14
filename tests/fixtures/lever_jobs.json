@@ -1,0 +1,17 @@
+[
+  {
+    "id": "lev-1",
+    "text": "Junior Software Engineer",
+    "hostedUrl": "https://jobs.lever.co/acme/lev-1?utm_medium=social",
+    "categories": {
+      "location": "New York, NY",
+      "team": "Engineering",
+      "commitment": "Full-time",
+      "workplaceType": "hybrid"
+    },
+    "descriptionHtml": "<div>Ship product features.</div>",
+    "descriptionPlain": "Ship product features.",
+    "createdAt": 1782907200000
+  }
+]
+

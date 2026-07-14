@@ -1,0 +1,27 @@
+sources:
+  - slug: discord
+    name: Discord
+    ats: greenhouse
+    company_name: Discord
+    enabled: true
+    priority: 1
+    config:
+      board_token: discord
+
+  - slug: highlevel
+    name: HighLevel
+    ats: lever
+    company_name: HighLevel
+    enabled: true
+    priority: 1
+    config:
+      site: gohighlevel
+
+  - slug: notion
+    name: Notion
+    ats: ashby
+    company_name: Notion
+    enabled: true
+    priority: 1
+    config:
+      organization: notion

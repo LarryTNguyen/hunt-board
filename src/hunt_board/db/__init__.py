@@ -1,0 +1,37 @@
+from hunt_board.db.base import Base
+from hunt_board.db.models import (
+    Application,
+    ApplicationEvent,
+    ApplicationStatus,
+    DuplicateReview,
+    JobMatch,
+    JobPosting,
+    JobSource,
+    JobVersion,
+    Notification,
+    SavedJob,
+    ScrapeRun,
+    ScrapeSourceRun,
+    Source,
+    User,
+    UserPreference,
+)
+
+__all__ = [
+    "Application",
+    "ApplicationEvent",
+    "ApplicationStatus",
+    "Base",
+    "DuplicateReview",
+    "JobMatch",
+    "JobPosting",
+    "JobSource",
+    "JobVersion",
+    "Notification",
+    "SavedJob",
+    "ScrapeRun",
+    "ScrapeSourceRun",
+    "Source",
+    "User",
+    "UserPreference",
+]

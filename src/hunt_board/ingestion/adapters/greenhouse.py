@@ -1,0 +1,39 @@
+from __future__ import annotations
+
+from typing import Any
+
+from hunt_board.ingestion.adapters.base import HttpATSAdapter, NormalizedJob, html_to_text, parse_datetime
+from hunt_board.ingestion.sources import SourceConfig
+
+
+class GreenhouseAdapter(HttpATSAdapter):
+    async def fetch_jobs(self, source: SourceConfig) -> list[NormalizedJob]:
+        token = source.config.get("board_token")
+        if not token:
+            raise ValueError(f"Greenhouse source {source.slug} requires config.board_token")
+        payload = await self.get_json(f"https://boards-api.greenhouse.io/v1/boards/{token}/jobs?content=true")
+        jobs = payload.get("jobs", []) if isinstance(payload, dict) else payload
+        return [self.normalize(source, job) for job in jobs]
+
+    def normalize(self, source: SourceConfig, job: dict[str, Any]) -> NormalizedJob:
+        location = job.get("location") or {}
+        departments = job.get("departments") or []
+        offices = job.get("offices") or []
+        description_html = job.get("content")
+        return NormalizedJob(
+            source_slug=source.slug,
+            company_name=source.company_name,
+            external_job_id=str(job["id"]),
+            title=job.get("title") or "Untitled job",
+            location=location.get("name") or ", ".join(o.get("name", "") for o in offices if o.get("name")) or None,
+            department=", ".join(d.get("name", "") for d in departments if d.get("name")) or None,
+            employment_type=job.get("metadata", {}).get("employment_type") if isinstance(job.get("metadata"), dict) else None,
+            workplace_type=job.get("metadata", {}).get("workplace_type") if isinstance(job.get("metadata"), dict) else None,
+            posting_url=job.get("absolute_url"),
+            apply_url=job.get("absolute_url"),
+            description_html=description_html,
+            description_text=html_to_text(description_html),
+            raw_json=job,
+            posted_at=parse_datetime(job.get("created_at")),
+            updated_at=parse_datetime(job.get("updated_at")),
+        )
