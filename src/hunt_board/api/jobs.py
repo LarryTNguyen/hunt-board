@@ -8,7 +8,7 @@ from sqlalchemy.orm import Session
 
 from hunt_board.api.schemas import JobPostingRead
 from hunt_board.auth.single_user import get_single_user
-from hunt_board.db.models import Application, ApplicationStatus, JobPosting, SavedJob, Source
+from hunt_board.db.models import Application, ApplicationStatus, DiscardedJob, JobPosting, SavedJob, Source
 from hunt_board.db.session import get_db
 from hunt_board.jobs.service import get_job_with_user_state, job_read_payload
 
@@ -30,6 +30,7 @@ def list_jobs(
     search: str | None = None,
     title: str | None = None,
     saved: bool | None = None,
+    discarded: bool = False,
     application_status: str | None = None,
     remote_only: bool = False,
     sort_by: Literal[
@@ -43,11 +44,21 @@ def list_jobs(
     user = get_single_user(db, required=False)
     user_id = user.id if user else None
     saved_join = and_(SavedJob.job_posting_id == JobPosting.id, SavedJob.user_id == user_id)
+    discarded_join = and_(DiscardedJob.job_posting_id == JobPosting.id, DiscardedJob.user_id == user_id)
     application_join = and_(Application.job_posting_id == JobPosting.id, Application.user_id == user_id)
     statement = (
-        select(JobPosting, Source, SavedJob.id, Application.id, ApplicationStatus)
+        select(
+            JobPosting,
+            Source,
+            SavedJob.id,
+            DiscardedJob.id,
+            DiscardedJob.created_at,
+            Application.id,
+            ApplicationStatus,
+        )
         .join(Source, Source.id == JobPosting.source_id)
         .outerjoin(SavedJob, saved_join)
+        .outerjoin(DiscardedJob, discarded_join)
         .outerjoin(Application, application_join)
         .outerjoin(ApplicationStatus, ApplicationStatus.id == Application.status_id)
     )
@@ -87,6 +98,10 @@ def list_jobs(
         statement = statement.where(SavedJob.id.is_not(None))
     elif saved is False:
         statement = statement.where(SavedJob.id.is_(None))
+    if discarded:
+        statement = statement.where(DiscardedJob.id.is_not(None))
+    else:
+        statement = statement.where(DiscardedJob.id.is_(None))
     if application_status:
         normalized_status = application_status.strip().lower()
         statement = statement.where(

@@ -8,7 +8,7 @@ from sqlalchemy.orm import Session
 
 from hunt_board.api.schemas import NotificationRead, NotificationReadAllResponse
 from hunt_board.auth.single_user import get_single_user
-from hunt_board.db.models import Notification
+from hunt_board.db.models import DiscardedJob, Notification
 from hunt_board.db.session import get_db
 
 router = APIRouter(prefix="/notifications", tags=["notifications"])
@@ -22,7 +22,15 @@ def list_notifications(
     db: Session = Depends(get_db),
 ) -> list[Notification]:
     user = get_single_user(db)
-    statement = select(Notification).where(Notification.user_id == user.id)
+    statement = (
+        select(Notification)
+        .outerjoin(
+            DiscardedJob,
+            (DiscardedJob.user_id == Notification.user_id)
+            & (DiscardedJob.job_posting_id == Notification.job_posting_id),
+        )
+        .where(Notification.user_id == user.id, DiscardedJob.id.is_(None))
+    )
     if unread is True:
         statement = statement.where(Notification.read_at.is_(None))
     elif unread is False:

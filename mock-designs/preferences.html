@@ -1,0 +1,28 @@
+<!doctype html>
+<html lang="en">
+  <head>
+    <meta charset="utf-8"><meta name="viewport" content="width=device-width, initial-scale=1">
+    <meta name="description" content="Static Hunt Board preferences and settings mockup.">
+    <title>Preferences — Hunt Board</title>
+    <link rel="stylesheet" href="app.css"><script src="app.js" defer></script>
+  </head>
+  <body>
+    <div data-app-nav="preferences"></div>
+    <main class="page-main" id="main-content">
+      <div class="page-shell">
+        <header class="page-intro"><div><p class="coordinate">Field kit / Matching instructions / Single-user profile</p><h1>Set the search route</h1><p>Tell Hunt Board which titles count, which signals bend, and which should stop a posting before it reaches your daily route.</p></div><span class="preview-label">Static settings preview</span></header>
+        <form class="settings-layout" data-preferences-form>
+          <nav class="settings-index" aria-label="Preference sections"><a href="#titles">Title matching</a><a href="#level">Level & work type</a><a href="#location">Location</a><a href="#sources">Source priority</a><a href="#alerts">Notifications</a></nav>
+          <div class="settings-form">
+            <section class="kit-section" id="titles"><header class="kit-head"><div><p class="utility-label">Kit 01 / strict signals</p><h2>Title matching</h2></div><span class="tag">Highest weight · 40%</span></header><div class="kit-body"><label class="field-label" for="exact-titles">Exact include phrases</label><textarea class="text-area" id="exact-titles">software engineer intern&#10;backend engineering intern&#10;software engineer, new grad</textarea><p>One phrase per line. Exact include phrases win before exclusions are applied.</p><label class="field-label" for="role-groups">Flexible role groups</label><input class="text-input" id="role-groups" value="Backend engineering, Infrastructure, ML platform"><label class="field-label" for="exclude-titles">Excluded title phrases</label><input class="text-input" id="exclude-titles" value="Senior, Staff, Principal, Manager, Sales"></div></section>
+            <section class="kit-section" id="level"><header class="kit-head"><div><p class="utility-label">Kit 02 / role shape</p><h2>Level & work type</h2></div><span class="tag">20% + 15%</span></header><div class="kit-body"><span class="field-label">Job levels</span><div class="choice-grid"><label class="choice"><input type="checkbox" checked> Internship</label><label class="choice"><input type="checkbox" checked> Entry level</label><label class="choice"><input type="checkbox"> Associate</label><label class="choice"><input type="checkbox"> Mid level</label><label class="choice"><input type="checkbox"> Senior</label><label class="choice"><input type="checkbox"> Manager</label></div><span class="field-label">Work types</span><div class="choice-grid"><label class="choice"><input type="checkbox" checked> Remote</label><label class="choice"><input type="checkbox" checked> Hybrid</label><label class="choice"><input type="checkbox" checked> On-site</label></div></div></section>
+            <section class="kit-section" id="location"><header class="kit-head"><div><p class="utility-label">Kit 03 / territory</p><h2>Location & freshness</h2></div><span class="tag">15% + 20%</span></header><div class="kit-body"><label class="field-label" for="locations">Preferred locations</label><input class="text-input" id="locations" value="San Francisco Bay Area; Remote — United States"><span class="field-label">Posting freshness</span><div class="choice-grid"><label class="choice"><input type="radio" name="freshness" checked> Last 7 days</label><label class="choice"><input type="radio" name="freshness"> Last 14 days</label><label class="choice"><input type="radio" name="freshness"> Any active posting</label></div></div></section>
+            <section class="kit-section" id="sources"><header class="kit-head"><div><p class="utility-label">Kit 04 / watched sources</p><h2>Source priority</h2></div><span class="tag">5% weight</span></header><div class="kit-body"><div class="priority-list"><div class="priority-row"><b>1</b><span>Greenhouse</span><span class="tag">High</span></div><div class="priority-row"><b>2</b><span>Ashby</span><span class="tag">Normal</span></div><div class="priority-row"><b>3</b><span>Lever</span><span class="tag">Normal</span></div></div></div></section>
+            <section class="kit-section" id="alerts"><header class="kit-head"><div><p class="utility-label">Kit 05 / dispatch rules</p><h2>Notifications</h2></div><span class="tag">Inbox only</span></header><div class="kit-body"><div class="choice-grid"><label class="choice"><input type="checkbox" checked> New top matches</label><label class="choice"><input type="checkbox" checked> Saved jobs closing</label><label class="choice"><input type="checkbox" checked> Application reminders</label><label class="choice"><input type="checkbox" checked> Reposts</label><label class="choice"><input type="checkbox"> Source-run summaries</label><label class="choice"><input type="checkbox"> Admin review queue</label></div></div></section>
+            <div class="sticky-actions"><button class="button button-quiet" type="reset">Reset</button><button class="button button-primary" type="submit">Save changes</button></div>
+          </div>
+        </form>
+      </div>
+    </main>
+  </body>
+</html>

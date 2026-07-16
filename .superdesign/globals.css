@@ -1,0 +1,51 @@
+@import url('https://fonts.googleapis.com/css2?family=Barlow+Condensed:wght@600;700&family=IBM+Plex+Mono:wght@400;500&family=Manrope:wght@400;500;600&display=swap');
+
+:root {
+  --survey-paper: #f2ebd9;
+  --paper-light: #fbf8ef;
+  --forest-ink: #163d34;
+  --graphite: #252821;
+  --signal-orange: #e4572e;
+  --grid-olive: #8b9274;
+  --sun-yellow: #f2c14e;
+  --font-display: 'Barlow Condensed', sans-serif;
+  --font-body: 'Manrope', sans-serif;
+  --font-data: 'IBM Plex Mono', monospace;
+  --content-max: 1280px;
+  --page-gutter: clamp(24px, 5vw, 64px);
+  --focus-ring: 3px solid var(--sun-yellow);
+}
+
+* {
+  box-sizing: border-box;
+}
+
+html {
+  scroll-behavior: smooth;
+}
+
+body {
+  margin: 0;
+  background: var(--survey-paper);
+  color: var(--graphite);
+  font-family: var(--font-body);
+}
+
+:focus-visible {
+  outline: var(--focus-ring);
+  outline-offset: 3px;
+}
+
+@media (prefers-reduced-motion: reduce) {
+  html {
+    scroll-behavior: auto;
+  }
+
+  *,
+  *::before,
+  *::after {
+    animation-duration: 0.01ms !important;
+    animation-iteration-count: 1 !important;
+    transition-duration: 0.01ms !important;
+  }
+}

@@ -54,3 +54,6 @@ Desktop.ini
 # Local Codex/agent state (keep AGENTS.md tracked)
 .agents/
 .codex/
+
+# Superdesign temporary component files
+.superdesign/tmp/

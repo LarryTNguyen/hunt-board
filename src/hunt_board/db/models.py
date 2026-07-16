@@ -168,6 +168,18 @@ class SavedJob(TimestampMixin, Base):
     notes: Mapped[str | None] = mapped_column(Text)
 
 
+class DiscardedJob(TimestampMixin, Base):
+    __tablename__ = "discarded_jobs"
+    __table_args__ = (
+        UniqueConstraint("user_id", "job_posting_id", name="uq_discarded_jobs_user_job"),
+        Index("ix_discarded_jobs_user_created", "user_id", "created_at"),
+    )
+
+    id: Mapped[int] = mapped_column(Integer, primary_key=True)
+    user_id: Mapped[int] = mapped_column(ForeignKey("users.id"), nullable=False)
+    job_posting_id: Mapped[int] = mapped_column(ForeignKey("job_postings.id"), nullable=False)
+
+
 class ApplicationStatus(TimestampMixin, Base):
     __tablename__ = "application_statuses"
 

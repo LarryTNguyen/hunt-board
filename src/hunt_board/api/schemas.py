@@ -57,6 +57,9 @@ class JobPostingRead(BaseModel):
     closed_at: datetime | None
     is_saved: bool = False
     saved_job_id: int | None = None
+    is_discarded: bool = False
+    discarded_job_id: int | None = None
+    discarded_at: datetime | None = None
     has_application: bool = False
     application_id: int | None = None
     application_status: ApplicationStatusRead | None = None
@@ -208,6 +211,17 @@ class SavedJobRead(BaseModel):
 class SavedJobDeleteResponse(BaseModel):
     job_id: int
     removed: bool
+
+
+class DiscardedJobRead(BaseModel):
+    id: int
+    discarded_at: datetime
+    job: JobSummaryRead
+
+
+class DiscardedJobDeleteResponse(BaseModel):
+    job_id: int
+    restored: bool
 
 
 class ApplicationCreate(BaseModel):
