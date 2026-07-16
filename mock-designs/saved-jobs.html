@@ -1,0 +1,61 @@
+<!doctype html>
+<html lang="en">
+  <head>
+    <meta charset="utf-8"><meta name="viewport" content="width=device-width, initial-scale=1">
+    <meta name="description" content="Static Hunt Board saved jobs field board mockup.">
+    <title>Saved jobs — Hunt Board</title>
+    <link rel="stylesheet" href="app.css?v=4"><script src="app.js?v=4" defer></script>
+  </head>
+  <body>
+    <div data-app-nav="saved"></div>
+    <main class="page-main" id="main-content">
+      <div class="page-shell">
+        <header class="page-intro">
+          <div><p class="coordinate">Field board / Saved observations / 05 records</p><h1>Worth returning to</h1><p>Your saved sightings, posted where they stay visible. Each notice keeps the practical facts and the note that made it memorable.</p></div>
+          <span class="preview-label">Wanted: a strong match</span>
+        </header>
+        <section class="toolbar" aria-label="Saved job filters">
+          <label class="search-field"><span class="sr-only">Search saved jobs</span><input data-saved-search type="search" placeholder="Find a saved title or company…"></label>
+          <select class="select-field" aria-label="Filter saved job location"><option>Any location</option><option>Remote</option><option>Bay Area</option></select>
+          <select class="select-field" aria-label="Sort saved jobs"><option>Recently saved</option><option>Highest match</option><option>Closing soon</option></select>
+          <button class="button" type="button" onclick="this.textContent='Select two notices'">Compare jobs</button>
+        </section>
+
+        <section class="board" data-saved-board aria-label="Saved jobs notice board">
+          <div class="wanted-grid">
+            <article class="wanted-card" data-search="software engineer intern roblox ml infrastructure san mateo hybrid greenhouse">
+              <div class="wanted-kicker">Wanted / shortlist</div><h2>Software Engineer Intern</h2><p class="wanted-company">Roblox / ML Infrastructure</p><div class="action-row"><span class="tag">96 match</span><span class="tag">2h fresh</span></div>
+              <div class="wanted-meta"><div><small>Location</small>San Mateo, CA</div><div><small>Work type</small>Hybrid</div><div><small>Source</small>Greenhouse</div><div><small>Level</small>Internship</div></div>
+              <p class="wanted-note"><strong>Field note:</strong> Strong infrastructure fit. Review distributed-systems project before applying.</p>
+              <div class="action-row"><a class="button button-dark" href="job-detail.html">Open dossier</a><button class="button button-quiet" type="button" onclick="this.closest('.wanted-card').remove()">Remove</button></div>
+            </article>
+            <article class="wanted-card" data-search="ai ml intern poshmark personalization san francisco hybrid lever">
+              <div class="wanted-kicker">Wanted / review</div><h2>AI / ML Intern</h2><p class="wanted-company">Poshmark / Personalization</p><div class="action-row"><span class="tag">91 match</span><span class="tag">5h fresh</span></div>
+              <div class="wanted-meta"><div><small>Location</small>San Francisco</div><div><small>Work type</small>Hybrid</div><div><small>Source</small>Lever</div><div><small>Level</small>Internship</div></div>
+              <p class="wanted-note"><strong>Field note:</strong> Personalization team is compelling. Check recommendation-system requirements.</p>
+              <div class="action-row"><a class="button button-dark" href="job-detail.html">Open dossier</a><button class="button button-quiet" type="button" onclick="this.closest('.wanted-card').remove()">Remove</button></div>
+            </article>
+            <article class="wanted-card" data-search="backend engineering intern unwrap platform remote ashby">
+              <div class="wanted-kicker">Wanted / remote</div><h2>Backend Engineering Intern</h2><p class="wanted-company">Unwrap.ai / Platform</p><div class="action-row"><span class="tag">87 match</span><span class="tag">1d fresh</span></div>
+              <div class="wanted-meta"><div><small>Location</small>Remote / US</div><div><small>Work type</small>Remote</div><div><small>Source</small>Ashby</div><div><small>Level</small>Internship</div></div>
+              <p class="wanted-note"><strong>Field note:</strong> Small platform team could mean broad ownership. Research mentorship.</p>
+              <div class="action-row"><a class="button button-dark" href="job-detail.html">Open dossier</a><button class="button button-quiet" type="button" onclick="this.closest('.wanted-card').remove()">Remove</button></div>
+            </article>
+            <article class="wanted-card" data-search="infrastructure engineer northstar core search mountain view lever hybrid">
+              <div class="wanted-kicker">Wanted / stretch</div><h2>Infrastructure Engineer</h2><p class="wanted-company">Northstar / Core Search</p><div class="action-row"><span class="tag">79 match</span><span class="tag">2d fresh</span></div>
+              <div class="wanted-meta"><div><small>Location</small>Mountain View</div><div><small>Work type</small>Hybrid</div><div><small>Source</small>Lever</div><div><small>Level</small>Entry level</div></div>
+              <p class="wanted-note"><strong>Field note:</strong> Stretch role. Compare minimum experience with current projects.</p>
+              <div class="action-row"><a class="button button-dark" href="job-detail.html">Open dossier</a><button class="button button-quiet" type="button" onclick="this.closest('.wanted-card').remove()">Remove</button></div>
+            </article>
+            <article class="wanted-card" data-search="software engineer new grad fathom data products new york ashby onsite">
+              <div class="wanted-kicker">Wanted / relocate?</div><h2>Software Engineer, New Grad</h2><p class="wanted-company">Fathom / Data Products</p><div class="action-row"><span class="tag">75 match</span><span class="tag">3d fresh</span></div>
+              <div class="wanted-meta"><div><small>Location</small>New York, NY</div><div><small>Work type</small>On-site</div><div><small>Source</small>Ashby</div><div><small>Level</small>Entry level</div></div>
+              <p class="wanted-note"><strong>Field note:</strong> Interesting data product. Decide whether relocation is realistic first.</p>
+              <div class="action-row"><a class="button button-dark" href="job-detail.html">Open dossier</a><button class="button button-quiet" type="button" onclick="this.closest('.wanted-card').remove()">Remove</button></div>
+            </article>
+          </div>
+        </section>
+      </div>
+    </main>
+  </body>
+</html>

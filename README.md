@@ -32,6 +32,17 @@ uv run hunt-board seed
 uv run uvicorn hunt_board.main:app --reload
 ```
 
+### Static landing page
+
+The frontend concept is a standalone static page and does not call the Hunt Board API.
+
+```powershell
+uv run python -m http.server 4173 --directory landing
+```
+
+Then open `http://localhost:4173`. The page uses plain HTML, CSS, and a small script for
+the responsive navigation menu, so it has no build step.
+
 ## Configuration
 
 - `DATABASE_URL`: SQLAlchemy PostgreSQL URL. The host default uses port `55432`.
@@ -78,6 +89,7 @@ Source fetches run concurrently, while SQLAlchemy writes remain serial and trans
 - `GET /jobs` and `GET /jobs/{job_id}`
 - `GET/PATCH /me/preferences` and `POST /me/preferences/rescore`
 - `GET /saved-jobs`, `POST/DELETE /jobs/{job_id}/save`, and `PATCH /saved-jobs/{saved_job_id}`
+- `GET /discarded-jobs` and `POST/DELETE /jobs/{job_id}/discard`
 - `GET /application-statuses`
 - `GET /applications`, `POST /jobs/{job_id}/applications`, and `GET/PATCH /applications/{application_id}`
 - `GET/POST /applications/{application_id}/events`
@@ -92,7 +104,7 @@ Source fetches run concurrently, while SQLAlchemy writes remain serial and trans
 
 Legacy `/api/jobs`, `/api/admin/*`, and `/api/ingest/run` paths remain available.
 
-`GET /jobs` remains a list response for Milestone 1 compatibility and now accepts `limit`/`offset`, filters for source/company/location/workplace/score/saved/application state, duplicate controls, and documented sort fields. Active jobs ranked by score remain the default, with confirmed duplicates excluded.
+`GET /jobs` remains a list response for Milestone 1 compatibility and now accepts `limit`/`offset`, filters for source/company/location/workplace/score/saved/discarded/application state, duplicate controls, and documented sort fields. Active jobs ranked by score remain the default, with confirmed duplicates and discarded jobs excluded. Use `discarded=true` or `GET /discarded-jobs` to review the discard pile; deleting the per-user discard record restores the job without deleting its normalized posting.
 
 ## Milestone 2 workflow examples
 
@@ -118,6 +130,14 @@ Invoke-RestMethod -Method Patch http://127.0.0.1:8000/applications/1 `
 Invoke-RestMethod 'http://127.0.0.1:8000/notifications?unread=true'
 Invoke-RestMethod -Method Post http://127.0.0.1:8000/notifications/read-all
 ```
+
+## Static product mockups
+
+The responsive, backend-free product concept lives in `mock-designs/`. Open
+`mock-designs/index.html` in a browser, then use **Open product mockups** to enter the
+cross-linked discovery, job detail, saved jobs, application tracker, notifications,
+preferences, and duplicate-review pages. The controls use sample data and lightweight local
+JavaScript only; they do not call the API or persist changes.
 
 ## Tests
 

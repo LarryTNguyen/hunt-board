@@ -1,0 +1,35 @@
+<!doctype html>
+<html lang="en">
+  <head>
+    <meta charset="utf-8"><meta name="viewport" content="width=device-width, initial-scale=1">
+    <meta name="description" content="Static Hunt Board notifications inbox mockup.">
+    <title>Notifications inbox — Hunt Board</title>
+    <link rel="stylesheet" href="app.css"><script src="app.js" defer></script>
+  </head>
+  <body>
+    <div data-app-nav="notifications"></div>
+    <main class="page-main" id="main-content">
+      <div class="page-shell">
+        <header class="page-intro"><div><p class="coordinate">Field dispatch / Channel 04 / 03 unread</p><h1>Incoming signals</h1><p>New matches, closing windows, reposts, and reminders—sorted into dispatches that lead to a decision.</p></div><button class="button" type="button" data-mark-all>Mark all read</button></header>
+        <section class="inbox-layout" aria-label="Notifications inbox">
+          <aside class="inbox-sidebar" data-inbox-tabs aria-label="Notification categories">
+            <button type="button" data-filter="all" aria-pressed="true"><span>All dispatches</span><b>6</b></button>
+            <button type="button" data-filter="match" aria-pressed="false"><span>New matches</span><b>2</b></button>
+            <button type="button" data-filter="closing" aria-pressed="false"><span>Closing jobs</span><b>1</b></button>
+            <button type="button" data-filter="repost" aria-pressed="false"><span>Reposts</span><b>1</b></button>
+            <button type="button" data-filter="reminder" aria-pressed="false"><span>Reminders</span><b>1</b></button>
+            <button type="button" data-filter="system" aria-pressed="false"><span>System</span><b>1</b></button>
+          </aside>
+          <div class="dispatch-list" data-dispatch-list>
+            <article class="dispatch-item is-unread" data-kind="match"><span class="dispatch-dot" aria-hidden="true"></span><div><p class="utility-label">New match / 96 relevance</p><h2>Software Engineer Intern at Roblox</h2><p>A fresh Greenhouse posting matches your exact title phrase and preferred Bay Area hybrid route.</p><div class="dispatch-actions"><a class="text-button" href="job-detail.html">Open sighting</a><button class="text-button" type="button" data-mark-read>Mark read</button></div></div><time class="dispatch-time">Today · 08:42</time></article>
+            <article class="dispatch-item is-unread" data-kind="closing"><span class="dispatch-dot" aria-hidden="true"></span><div><p class="utility-label">Closing window / 2 days</p><h2>Backend Engineering Intern closes Friday</h2><p>The saved Unwrap.ai role is still active. Your tracker note says to tailor the project bullets before applying.</p><div class="dispatch-actions"><a class="text-button" href="application-tracker.html">Open tracker</a><button class="text-button" type="button" data-mark-read>Mark read</button></div></div><time class="dispatch-time">Today · 07:15</time></article>
+            <article class="dispatch-item is-unread" data-kind="reminder"><span class="dispatch-dot" aria-hidden="true"></span><div><p class="utility-label">Application reminder</p><h2>Technical screen tomorrow at 10:00</h2><p>Your Roblox interview frame has a preparation note and two unchecked tasks.</p><div class="dispatch-actions"><a class="text-button" href="application-tracker.html">Review application</a><button class="text-button" type="button" data-mark-read>Mark read</button></div></div><time class="dispatch-time">Yesterday · 17:30</time></article>
+            <article class="dispatch-item" data-kind="repost"><span class="dispatch-dot" aria-hidden="true"></span><div><p class="utility-label">Repost observed</p><h2>Infrastructure Engineer appeared again</h2><p>The Northstar listing was inactive for 18 days and returned with the same canonical application URL.</p><div class="dispatch-actions"><a class="text-button" href="job-detail.html">Inspect posting</a></div></div><time class="dispatch-time">Yesterday · 11:08</time></article>
+            <article class="dispatch-item" data-kind="match"><span class="dispatch-dot" aria-hidden="true"></span><div><p class="utility-label">New match / 87 relevance</p><h2>Backend Engineering Intern at Unwrap.ai</h2><p>Remote work type, internship level, and platform title group align with your preferences.</p><div class="dispatch-actions"><a class="text-button" href="job-detail.html">Open sighting</a></div></div><time class="dispatch-time">Mon · 16:20</time></article>
+            <article class="dispatch-item" data-kind="system"><span class="dispatch-dot" aria-hidden="true"></span><div><p class="utility-label">Source report</p><h2>Morning collection completed</h2><p>Greenhouse, Lever, and Ashby sources completed successfully. Twelve new records entered today’s route.</p><div class="dispatch-actions"><a class="text-button" href="duplicate-review.html">View admin review</a></div></div><time class="dispatch-time">Mon · 06:05</time></article>
+          </div>
+        </section>
+      </div>
+    </main>
+  </body>
+</html>

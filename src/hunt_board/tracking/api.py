@@ -13,6 +13,8 @@ from hunt_board.api.schemas import (
     ApplicationRead,
     ApplicationStatusRead,
     ApplicationUpdate,
+    DiscardedJobDeleteResponse,
+    DiscardedJobRead,
     SavedJobCreate,
     SavedJobDeleteResponse,
     SavedJobRead,
@@ -23,6 +25,7 @@ from hunt_board.db.models import (
     Application,
     ApplicationEvent,
     ApplicationStatus,
+    DiscardedJob,
     JobPosting,
     SavedJob,
     Source,
@@ -162,6 +165,73 @@ def unsave_job(job_id: int, db: Session = Depends(get_db)) -> dict:
     db.delete(saved)
     db.commit()
     return {"job_id": job_id, "removed": True}
+
+
+@router.get("/discarded-jobs", response_model=list[DiscardedJobRead])
+def list_discarded_jobs(
+    limit: int = Query(default=50, ge=1, le=200),
+    offset: int = Query(default=0, ge=0),
+    db: Session = Depends(get_db),
+) -> list[dict]:
+    user = get_single_user(db)
+    rows = db.execute(
+        select(DiscardedJob, JobPosting)
+        .join(JobPosting, JobPosting.id == DiscardedJob.job_posting_id)
+        .where(DiscardedJob.user_id == user.id)
+        .order_by(DiscardedJob.created_at.desc(), DiscardedJob.id.desc())
+        .offset(offset)
+        .limit(limit)
+    ).all()
+    return [
+        {
+            "id": discarded.id,
+            "discarded_at": discarded.created_at,
+            "job": job_summary(job),
+        }
+        for discarded, job in rows
+    ]
+
+
+@router.post("/jobs/{job_id}/discard", response_model=DiscardedJobRead)
+def discard_job(job_id: int, db: Session = Depends(get_db)) -> dict:
+    user = get_single_user(db)
+    job = db.get(JobPosting, job_id)
+    if job is None:
+        raise HTTPException(status_code=404, detail="Job not found")
+    discarded = db.scalar(
+        select(DiscardedJob).where(
+            DiscardedJob.user_id == user.id,
+            DiscardedJob.job_posting_id == job_id,
+        )
+    )
+    if discarded is None:
+        discarded = DiscardedJob(user_id=user.id, job_posting_id=job_id)
+        db.add(discarded)
+        db.commit()
+        db.refresh(discarded)
+    return {
+        "id": discarded.id,
+        "discarded_at": discarded.created_at,
+        "job": job_summary(job),
+    }
+
+
+@router.delete("/jobs/{job_id}/discard", response_model=DiscardedJobDeleteResponse)
+def restore_discarded_job(job_id: int, db: Session = Depends(get_db)) -> dict:
+    user = get_single_user(db)
+    if db.get(JobPosting, job_id) is None:
+        raise HTTPException(status_code=404, detail="Job not found")
+    discarded = db.scalar(
+        select(DiscardedJob).where(
+            DiscardedJob.user_id == user.id,
+            DiscardedJob.job_posting_id == job_id,
+        )
+    )
+    if discarded is None:
+        return {"job_id": job_id, "restored": False}
+    db.delete(discarded)
+    db.commit()
+    return {"job_id": job_id, "restored": True}
 
 
 @router.patch("/saved-jobs/{saved_job_id}", response_model=SavedJobRead)

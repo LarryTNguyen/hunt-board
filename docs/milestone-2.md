@@ -30,6 +30,14 @@ Updates trim and case-insensitively deduplicate list values. Empty strings, unkn
 
 Save and unsave are idempotent. Repeating a save returns the existing saved record and does not overwrite its note; use the patch endpoint to make note changes. Repeating an unsave returns `removed: false`.
 
+## Discard pile
+
+- `GET /discarded-jobs`
+- `POST /jobs/{job_id}/discard`
+- `DELETE /jobs/{job_id}/discard`
+
+Discarding is a per-user, idempotent state change: it hides a job from the default discovery list and hides any related notification from the inbox. It does not delete the normalized job posting, so a user can review the discard pile later and restore a job with the delete endpoint. `GET /jobs?discarded=true` is also available for filtered browsing.
+
 ## Applications and timelines
 
 - `GET /application-statuses`

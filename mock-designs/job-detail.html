@@ -1,0 +1,51 @@
+<!doctype html>
+<html lang="en">
+  <head>
+    <meta charset="utf-8"><meta name="viewport" content="width=device-width, initial-scale=1">
+    <meta name="description" content="Static Hunt Board job detail dossier mockup.">
+    <title>Software Engineer Intern — Hunt Board</title>
+    <link rel="stylesheet" href="app.css"><script src="app.js" defer></script>
+  </head>
+  <body>
+    <div data-app-nav="discover"></div>
+    <main class="page-main" id="main-content">
+      <div class="page-shell">
+        <header class="page-intro">
+          <div><p class="coordinate">Observation dossier / HB-48821 / Recorded 2h ago</p><h1>Job dossier</h1><p>A full applicant-facing record with the source posting, match evidence, and personal field notes in one place.</p></div>
+          <div class="action-row"><a class="button" href="job-discovery.html">← Back to sightings</a><button class="button" type="button" onclick="this.textContent='Saved'">Save</button><a class="button button-primary" href="#">Open official posting ↗</a></div>
+        </header>
+
+        <div class="dossier-grid">
+          <article class="sheet">
+            <header class="sheet-block">
+              <div class="action-row"><span class="tag">Active posting</span><span class="tag">Greenhouse</span><span class="tag">96% match</span></div>
+              <h1 class="sheet-title">Software Engineer Intern</h1>
+              <p class="company-line">Roblox / ML Infrastructure · San Mateo, CA · Hybrid</p>
+            </header>
+            <section class="sheet-block detail-copy">
+              <p class="section-label">Role observation</p><h2>Build the systems behind intelligent experiences</h2>
+              <p>Join the ML Infrastructure team to build high-performance distributed systems for training and serving machine-learning models. You will help create the foundation that powers personalization for millions of concurrent users.</p>
+            </section>
+            <section class="sheet-block detail-copy">
+              <p class="section-label">Responsibilities</p><h2>What you will work on</h2>
+              <ul><li>Design and develop reliable API surfaces for internal machine-learning customers.</li><li>Improve compute-resource allocation across distributed clusters.</li><li>Collaborate with data-science teams to streamline the model lifecycle.</li><li>Measure performance and communicate technical tradeoffs.</li></ul>
+            </section>
+            <section class="sheet-block detail-copy">
+              <p class="section-label">Qualifications</p><h2>What the team is looking for</h2>
+              <ul><li>Currently pursuing a degree in computer science or a related field.</li><li>Experience with Python, Go, Java, or C++.</li><li>Interest in distributed systems and machine-learning infrastructure.</li><li>Clear written and verbal communication.</li></ul>
+            </section>
+          </article>
+
+          <aside>
+            <section class="sheet">
+              <div class="sheet-block"><p class="section-label">Applicant information</p><dl class="meta-list"><div><dt>Job level</dt><dd>Internship</dd></div><div><dt>Work type</dt><dd>Hybrid</dd></div><div><dt>Location</dt><dd>San Mateo, CA</dd></div><div><dt>Compensation</dt><dd>$45–$58 / hour</dd></div><div><dt>Source</dt><dd>Greenhouse</dd></div><div><dt>First seen</dt><dd>2h ago</dd></div></dl></div>
+              <div class="sheet-block"><p class="section-label">Match breakdown / 96</p><div class="score-grid"><div class="score-row"><span>Title relevance</span><strong>40 / 40</strong><div class="score-bar"><i style="--score:100%"></i></div></div><div class="score-row"><span>Job level</span><strong>20 / 20</strong><div class="score-bar"><i style="--score:100%"></i></div></div><div class="score-row"><span>Freshness</span><strong>20 / 20</strong><div class="score-bar"><i style="--score:100%"></i></div></div><div class="score-row"><span>Location / work type</span><strong>12 / 15</strong><div class="score-bar"><i style="--score:80%"></i></div></div><div class="score-row"><span>Source priority</span><strong>4 / 5</strong><div class="score-bar"><i style="--score:80%"></i></div></div></div></div>
+              <div class="sheet-block"><label class="section-label" for="job-notes">Personal field notes</label><textarea class="notes-area" id="job-notes" placeholder="Why is this role worth returning to?">Strong infrastructure fit. Review distributed-systems projects before applying.</textarea></div>
+              <div class="sheet-block"><div class="action-row"><button class="button button-dark" type="button" onclick="this.textContent='Added to tracker'">Add to tracker</button><button class="button" type="button" onclick="this.textContent='Notes saved'">Save notes</button></div></div>
+            </section>
+          </aside>
+        </div>
+      </div>
+    </main>
+  </body>
+</html>

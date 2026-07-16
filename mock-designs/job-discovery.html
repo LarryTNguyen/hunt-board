@@ -1,0 +1,120 @@
+<!doctype html>
+<html lang="en">
+  <head>
+    <meta charset="utf-8">
+    <meta name="viewport" content="width=device-width, initial-scale=1">
+    <meta name="description" content="Static Hunt Board job discovery workspace mockup.">
+    <title>Daily sightings — Hunt Board</title>
+    <link rel="stylesheet" href="app.css">
+    <script src="app.js" defer></script>
+  </head>
+  <body>
+    <div data-app-nav="discover"></div>
+    <main class="page-main discovery-content" id="main-content">
+      <div class="page-shell">
+        <header class="page-intro">
+          <div>
+            <p class="coordinate">37.3382° N / Field desk 001 / Observation route</p>
+            <h1>Daily sightings</h1>
+            <p>A focused ledger of fresh roles worth a closer look. Select a sighting to open its observation sheet.</p>
+          </div>
+          <span class="preview-label">Static sample records</span>
+        </header>
+
+        <section class="toolbar" aria-label="Job discovery filters">
+          <label class="search-field">
+            <span class="sr-only">Search by job title or company</span>
+            <input data-ledger-search type="search" placeholder="Search title or company…">
+          </label>
+          <div class="filter-tabs" data-ledger-filters aria-label="Sighting status">
+            <button class="filter-button" type="button" data-filter="all" aria-pressed="true">All</button>
+            <button class="filter-button" type="button" data-filter="new" aria-pressed="false">New</button>
+            <button class="filter-button" type="button" data-filter="saved" aria-pressed="false">Saved</button>
+            <button class="filter-button" type="button" data-filter="top" aria-pressed="false">Top matches</button>
+          </div>
+          <select class="select-field" aria-label="Location filter">
+            <option>Any location</option><option>Remote</option><option>Bay Area</option><option>New York</option>
+          </select>
+          <select class="select-field" aria-label="Sort sightings">
+            <option>Match score</option><option>Freshest first</option><option>Company</option>
+          </select>
+          <span class="results-note" data-results-count>6 sightings shown</span>
+        </section>
+
+        <section class="ledger-wrap" aria-labelledby="ledger-title">
+          <h2 class="sr-only" id="ledger-title">Job sightings ledger</h2>
+          <table class="ledger" data-discovery-ledger>
+            <thead>
+              <tr><th>Status</th><th>Sighting / title</th><th>Company / team</th><th>Field / location</th><th class="drawer-hide">Source</th><th>Match</th><th class="drawer-hide">Last seen</th></tr>
+            </thead>
+            <tbody>
+              <tr tabindex="0" aria-selected="false" data-state="new" data-title="Software Engineer Intern" data-company="Roblox / ML Infrastructure" data-location="San Mateo, CA" data-source="Greenhouse" data-work-type="Hybrid" data-level="Internship" data-freshness="2h ago" data-score="96" data-search="software engineer intern roblox ml infrastructure san mateo greenhouse hybrid">
+                <td><span class="status status-new" data-row-status data-original="New">New</span></td>
+                <td><a class="ledger-title" href="job-detail.html">Software Engineer Intern</a><span class="ledger-submeta">Roblox / ML Infrastructure · Greenhouse · 2h ago</span></td>
+                <td>Roblox / ML Infrastructure</td><td>San Mateo, CA / Hybrid</td><td class="drawer-hide"><span class="source-tag">Greenhouse</span></td><td><span class="match-score">96</span></td><td class="drawer-hide"><span class="utility-label">2h ago</span></td>
+              </tr>
+              <tr tabindex="0" aria-selected="false" data-state="saved" data-title="AI / ML Intern" data-company="Poshmark / Personalization" data-location="San Francisco, CA" data-source="Lever" data-work-type="Hybrid" data-level="Internship" data-freshness="5h ago" data-score="91" data-search="ai ml intern poshmark personalization san francisco lever hybrid">
+                <td><span class="status status-saved" data-row-status data-original="Saved">Saved</span></td>
+                <td><a class="ledger-title" href="job-detail.html">AI / ML Intern</a><span class="ledger-submeta">Poshmark / Personalization · Lever · 5h ago</span></td>
+                <td>Poshmark / Personalization</td><td>San Francisco, CA / Hybrid</td><td class="drawer-hide"><span class="source-tag">Lever</span></td><td><span class="match-score">91</span></td><td class="drawer-hide"><span class="utility-label">5h ago</span></td>
+              </tr>
+              <tr tabindex="0" aria-selected="false" data-state="new" data-title="Backend Engineering Intern" data-company="Unwrap.ai / Platform" data-location="Remote / US" data-source="Ashby" data-work-type="Remote" data-level="Internship" data-freshness="1d ago" data-score="87" data-search="backend engineering intern unwrap platform remote ashby">
+                <td><span class="status status-new" data-row-status data-original="New">New</span></td>
+                <td><a class="ledger-title" href="job-detail.html">Backend Engineering Intern</a><span class="ledger-submeta">Unwrap.ai / Platform · Ashby · 1d ago</span></td>
+                <td>Unwrap.ai / Platform</td><td>Remote / US</td><td class="drawer-hide"><span class="source-tag">Ashby</span></td><td><span class="match-score">87</span></td><td class="drawer-hide"><span class="utility-label">1d ago</span></td>
+              </tr>
+              <tr tabindex="0" aria-selected="false" data-state="new" data-title="Data Engineering Intern" data-company="Altom / Logistics Systems" data-location="San Jose, CA" data-source="Greenhouse" data-work-type="On-site" data-level="Internship" data-freshness="1d ago" data-score="82" data-search="data engineering intern altom logistics san jose greenhouse onsite">
+                <td><span class="status status-new" data-row-status data-original="New">New</span></td>
+                <td><a class="ledger-title" href="job-detail.html">Data Engineering Intern</a><span class="ledger-submeta">Altom / Logistics Systems · Greenhouse · 1d ago</span></td>
+                <td>Altom / Logistics Systems</td><td>San Jose, CA / On-site</td><td class="drawer-hide"><span class="source-tag">Greenhouse</span></td><td><span class="match-score">82</span></td><td class="drawer-hide"><span class="utility-label">1d ago</span></td>
+              </tr>
+              <tr tabindex="0" aria-selected="false" data-state="saved" data-title="Infrastructure Engineer" data-company="Northstar / Core Search" data-location="Mountain View, CA" data-source="Lever" data-work-type="Hybrid" data-level="Entry level" data-freshness="2d ago" data-score="79" data-search="infrastructure engineer northstar core search mountain view lever hybrid">
+                <td><span class="status status-saved" data-row-status data-original="Saved">Saved</span></td>
+                <td><a class="ledger-title" href="job-detail.html">Infrastructure Engineer</a><span class="ledger-submeta">Northstar / Core Search · Lever · 2d ago</span></td>
+                <td>Northstar / Core Search</td><td>Mountain View, CA / Hybrid</td><td class="drawer-hide"><span class="source-tag">Lever</span></td><td><span class="match-score">79</span></td><td class="drawer-hide"><span class="utility-label">2d ago</span></td>
+              </tr>
+              <tr tabindex="0" aria-selected="false" data-state="new" data-title="Software Engineer, New Grad" data-company="Fathom / Data Products" data-location="New York, NY" data-source="Ashby" data-work-type="On-site" data-level="Entry level" data-freshness="3d ago" data-score="75" data-search="software engineer new grad fathom data products new york ashby onsite">
+                <td><span class="status status-new" data-row-status data-original="New">New</span></td>
+                <td><a class="ledger-title" href="job-detail.html">Software Engineer, New Grad</a><span class="ledger-submeta">Fathom / Data Products · Ashby · 3d ago</span></td>
+                <td>Fathom / Data Products</td><td>New York, NY / On-site</td><td class="drawer-hide"><span class="source-tag">Ashby</span></td><td><span class="match-score">75</span></td><td class="drawer-hide"><span class="utility-label">3d ago</span></td>
+              </tr>
+            </tbody>
+          </table>
+        </section>
+      </div>
+    </main>
+
+    <aside class="observation-drawer" data-observation-drawer aria-hidden="true" aria-label="Selected job observation">
+      <header class="drawer-head">
+        <button class="icon-button" type="button" data-close-drawer aria-label="Close observation sheet">×</button>
+        <span class="utility-label">Selected observation</span>
+        <button class="button button-quiet" type="button" data-save-job>Save record</button>
+      </header>
+      <div class="drawer-body">
+        <p class="eyebrow">Active posting · <span data-job-field="freshness">2h ago</span></p>
+        <h2 data-job-field="title">Software Engineer Intern</h2>
+        <p class="drawer-company"><span data-job-field="company">Roblox / ML Infrastructure</span> · <span data-job-field="location">San Mateo, CA</span></p>
+        <div class="drawer-score"><div><p class="utility-label">Calculated relevance</p><strong><span data-job-field="score">96</span>%</strong></div><span class="tag">Title-first match</span></div>
+        <div class="action-row">
+          <a class="button button-primary" href="job-detail.html">View full dossier →</a>
+          <button class="button" type="button" onclick="document.querySelector('[data-save-job]').click()">Save for later</button>
+        </div>
+        <section class="drawer-section">
+          <h3>Field notes / description</h3>
+          <p>Build reliable systems that support machine-learning infrastructure at scale. Work with platform and data teams to improve internal APIs, compute allocation, and model delivery.</p>
+          <ul><li>Develop maintainable backend services.</li><li>Collaborate across infrastructure and data science.</li><li>Measure and improve system performance.</li></ul>
+        </section>
+        <section class="drawer-section">
+          <h3>Applicant information</h3>
+          <dl class="meta-list">
+            <div><dt>ATS source</dt><dd data-job-field="source">Greenhouse</dd></div>
+            <div><dt>Work type</dt><dd data-job-field="workType">Hybrid</dd></div>
+            <div><dt>Location</dt><dd data-job-field="location">San Mateo, CA</dd></div>
+            <div><dt>Job level</dt><dd data-job-field="level">Internship</dd></div>
+            <div><dt>Freshness</dt><dd data-job-field="freshness">2h ago</dd></div>
+          </dl>
+        </section>
+      </div>
+    </aside>
+  </body>
+</html>

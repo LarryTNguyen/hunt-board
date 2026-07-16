@@ -1,0 +1,36 @@
+<!doctype html>
+<html lang="en">
+  <head>
+    <meta charset="utf-8"><meta name="viewport" content="width=device-width, initial-scale=1">
+    <meta name="description" content="Static Hunt Board duplicate review admin mockup.">
+    <title>Duplicate review — Hunt Board</title>
+    <link rel="stylesheet" href="app.css"><script src="app.js" defer></script>
+  </head>
+  <body>
+    <div data-app-nav="admin"></div>
+    <div class="admin-banner"><div class="page-shell"><header class="page-intro"><div><p class="coordinate">Internal instrument / Duplicate review / 04 queued</p><h1>Resolve uncertain sightings</h1><p>Conservative review keeps similar jobs separate until the evidence is strong enough to merge them.</p></div><span class="preview-label">Admin-only mockup</span></header></div></div>
+    <main class="page-main" id="main-content">
+      <div class="page-shell">
+        <div class="review-layout">
+          <aside class="review-queue" aria-label="Duplicate review queue">
+            <div class="kit-head"><div><p class="utility-label">Review queue</p><h2>4 cases</h2></div></div>
+            <button class="queue-item is-active" type="button"><small>Case 01 · Medium confidence</small><strong>Software Engineer Intern</strong><small>Roblox · 2 records</small></button>
+            <button class="queue-item" type="button"><small>Case 02 · Low confidence</small><strong>Backend Engineer</strong><small>Atlas · 2 records</small></button>
+            <button class="queue-item" type="button"><small>Case 03 · Medium confidence</small><strong>ML Platform Intern</strong><small>Fable · 2 records</small></button>
+            <button class="queue-item" type="button"><small>Case 04 · Low confidence</small><strong>New Grad Engineer</strong><small>Northwind · 2 records</small></button>
+          </aside>
+
+          <section class="comparison" data-comparison aria-labelledby="comparison-title">
+            <i class="registration-mark mark-tl" aria-hidden="true"></i><i class="registration-mark mark-tr" aria-hidden="true"></i><i class="registration-mark mark-bl" aria-hidden="true"></i><i class="registration-mark mark-br" aria-hidden="true"></i>
+            <header class="comparison-head"><div><p class="utility-label">Case 01 / Similar title and location</p><h2 id="comparison-title">Are these the same posting?</h2></div><span class="tag">Medium confidence · 68%</span></header>
+            <div class="comparison-grid">
+              <article class="record-sheet"><p class="utility-label">Record A / Current sighting</p><h2>Software Engineer Intern</h2><div class="action-row"><span class="tag">Greenhouse</span><span class="tag">Active</span></div><div class="evidence-row evidence-match"><small>Company</small><span>Roblox</span></div><div class="evidence-row evidence-match"><small>Normalized title</small><span>software engineer intern</span></div><div class="evidence-row evidence-match"><small>Location</small><span>San Mateo, CA</span></div><div class="evidence-row"><small>External source ID</small><span>6184201003</span></div><div class="evidence-row"><small>Canonical apply URL</small><span>boards.greenhouse.io/roblox/jobs/6184201</span></div><div class="evidence-row"><small>First / last seen</small><span>Jul 15 · Jul 15</span></div></article>
+              <article class="record-sheet"><p class="utility-label">Record B / Earlier sighting</p><h2>Software Engineering Intern — ML</h2><div class="action-row"><span class="tag">Lever</span><span class="tag">Inactive</span></div><div class="evidence-row evidence-match"><small>Company</small><span>Roblox</span></div><div class="evidence-row evidence-match"><small>Normalized title</small><span>software engineer intern ml</span></div><div class="evidence-row evidence-match"><small>Location</small><span>San Mateo, CA</span></div><div class="evidence-row"><small>External source ID</small><span>RBX-ML-INT-24</span></div><div class="evidence-row"><small>Canonical apply URL</small><span>jobs.lever.co/roblox/8e2c1a</span></div><div class="evidence-row"><small>First / last seen</small><span>Jun 08 · Jun 26</span></div></article>
+            </div>
+            <footer class="comparison-actions"><p class="decision-note" data-decision-note>Different source IDs and URLs keep confidence below auto-merge.</p><div class="action-row"><button class="button button-quiet" type="button" data-decision="deferred">Defer</button><button class="button" type="button" data-decision="kept separate">Keep separate</button><button class="button button-primary" type="button" data-decision="merged">Merge records</button></div></footer>
+          </section>
+        </div>
+      </div>
+    </main>
+  </body>
+</html>

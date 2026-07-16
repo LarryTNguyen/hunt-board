@@ -1,0 +1,120 @@
+<!doctype html>
+<html lang="en">
+  <head>
+    <meta charset="utf-8">
+    <meta name="viewport" content="width=device-width, initial-scale=1">
+    <meta name="description" content="Static Hunt Board film-roll application tracker mockup.">
+    <title>Application tracker — Hunt Board</title>
+    <link rel="stylesheet" href="app.css?v=3">
+    <script src="app.js?v=3" defer></script>
+  </head>
+  <body>
+    <div data-app-nav="tracker"></div>
+    <main class="page-main" id="main-content">
+      <div class="page-shell">
+        <header class="page-intro">
+          <div>
+            <p class="coordinate">Application roll / 06 exposed frames / July route</p>
+            <h1>Applications in motion</h1>
+            <p>A searchable spreadsheet developed as a film roll. Every strip holds one application and the next scene it needs.</p>
+          </div>
+          <button class="button button-primary" data-add-application type="button">+ Add application</button>
+        </header>
+
+        <section class="toolbar" aria-label="Application tracker filters">
+          <label class="search-field"><span class="sr-only">Search company or job title</span><input data-tracker-search type="search" placeholder="Search company or job title…"></label>
+          <select class="select-field" data-stage-filter aria-label="Filter by application stage"><option value="all">All stages</option><option value="saved">Saved</option><option value="applied">Applied</option><option value="interview">Interview</option><option value="offer">Offer</option></select>
+          <select class="select-field" data-status-filter aria-label="Filter by status"><option value="all">Any status</option><option value="active">Active</option><option value="waiting">Waiting</option><option value="closed">Closed</option></select>
+          <select class="select-field" data-date-filter aria-label="Filter by application date"><option value="all">Any date</option><option value="week">This week</option><option value="month">This month</option><option value="older">Older</option></select>
+          <span class="results-note" data-tracker-count>6 applications shown</span>
+        </section>
+
+        <p class="tracker-edit-note"><span aria-hidden="true">✎</span> Select any workflow field to edit this static preview. Changes reset when the page reloads.</p>
+
+        <section class="film-roll" data-tracker aria-label="Application tracking film roll">
+          <div class="film-table">
+            <div class="film-head"><span>Company / role</span><span>Stage</span><span>Applied</span><span>Next action</span><span>Deadline</span><span>Contact / notes</span><span></span></div>
+
+            <article class="film-row" data-search="roblox software engineer intern ml infrastructure" data-stage="interview" data-status="active" data-date="week">
+              <div class="film-cell film-role">
+                <div class="company-lockup"><span class="company-logo logo-roblox" aria-hidden="true">R</span><span><small>Frame 01</small><strong class="company-name">Roblox</strong></span></div>
+                <span class="role-title">Software Engineer Intern</span>
+              </div>
+              <div class="film-cell"><button class="film-edit" data-edit-field="stage" data-company="Roblox" data-value="Interview" type="button" aria-label="Edit stage for Roblox"><small>Stage <span aria-hidden="true">✎</span></small><strong><span class="stage-tag stage-interview">Interview</span></strong></button></div>
+              <div class="film-cell"><button class="film-edit" data-edit-field="applied" data-company="Roblox" data-value="Jul 12" type="button" aria-label="Edit applied date for Roblox"><small>Applied <span aria-hidden="true">✎</span></small><strong>Jul 12</strong></button></div>
+              <div class="film-cell"><button class="film-edit" data-edit-field="next action" data-company="Roblox" data-value="Technical screen prep" type="button" aria-label="Edit next action for Roblox"><small>Next action <span aria-hidden="true">✎</span></small><strong>Technical screen prep</strong></button></div>
+              <div class="film-cell"><button class="film-edit" data-edit-field="deadline" data-company="Roblox" data-value="Jul 18 · 10:00" type="button" aria-label="Edit deadline for Roblox"><small>Due <span aria-hidden="true">✎</span></small><strong>Jul 18 · 10:00</strong></button></div>
+              <div class="film-cell"><button class="film-edit" data-edit-field="contact / notes" data-company="Roblox" data-value="Maya Chen · Recruiter" type="button" aria-label="Edit contact or notes for Roblox"><small>Contact <span aria-hidden="true">✎</span></small><strong>Maya Chen · Recruiter</strong></button></div>
+              <div class="film-cell"><button class="icon-button" type="button" aria-label="Open Roblox application">→</button></div>
+            </article>
+
+            <article class="film-row" data-search="poshmark ai ml intern personalization" data-stage="applied" data-status="waiting" data-date="week">
+              <div class="film-cell film-role">
+                <div class="company-lockup"><span class="company-logo logo-poshmark" aria-hidden="true">P</span><span><small>Frame 02</small><strong class="company-name">Poshmark</strong></span></div>
+                <span class="role-title">AI / ML Intern</span>
+              </div>
+              <div class="film-cell"><button class="film-edit" data-edit-field="stage" data-company="Poshmark" data-value="Applied" type="button" aria-label="Edit stage for Poshmark"><small>Stage <span aria-hidden="true">✎</span></small><strong><span class="stage-tag">Applied</span></strong></button></div>
+              <div class="film-cell"><button class="film-edit" data-edit-field="applied" data-company="Poshmark" data-value="Jul 14" type="button" aria-label="Edit applied date for Poshmark"><small>Applied <span aria-hidden="true">✎</span></small><strong>Jul 14</strong></button></div>
+              <div class="film-cell"><button class="film-edit" data-edit-field="next action" data-company="Poshmark" data-value="Wait for response" type="button" aria-label="Edit next action for Poshmark"><small>Next action <span aria-hidden="true">✎</span></small><strong>Wait for response</strong></button></div>
+              <div class="film-cell"><button class="film-edit" data-edit-field="deadline" data-company="Poshmark" data-value="Jul 22" type="button" aria-label="Edit deadline for Poshmark"><small>Follow up <span aria-hidden="true">✎</span></small><strong>Jul 22</strong></button></div>
+              <div class="film-cell"><button class="film-edit" data-edit-field="contact / notes" data-company="Poshmark" data-value="Referral attached" type="button" aria-label="Edit contact or notes for Poshmark"><small>Note <span aria-hidden="true">✎</span></small><strong>Referral attached</strong></button></div>
+              <div class="film-cell"><button class="icon-button" type="button" aria-label="Open Poshmark application">→</button></div>
+            </article>
+
+            <article class="film-row" data-search="unwrap backend engineering intern platform" data-stage="saved" data-status="active" data-date="week">
+              <div class="film-cell film-role">
+                <div class="company-lockup"><span class="company-logo logo-unwrap" aria-hidden="true">U</span><span><small>Frame 03</small><strong class="company-name">Unwrap.ai</strong></span></div>
+                <span class="role-title">Backend Engineering Intern</span>
+              </div>
+              <div class="film-cell"><button class="film-edit" data-edit-field="stage" data-company="Unwrap.ai" data-value="Saved" type="button" aria-label="Edit stage for Unwrap.ai"><small>Stage <span aria-hidden="true">✎</span></small><strong><span class="stage-tag">Saved</span></strong></button></div>
+              <div class="film-cell"><button class="film-edit" data-edit-field="applied" data-company="Unwrap.ai" data-value="Jul 15" type="button" aria-label="Edit applied date for Unwrap.ai"><small>Saved <span aria-hidden="true">✎</span></small><strong>Jul 15</strong></button></div>
+              <div class="film-cell"><button class="film-edit" data-edit-field="next action" data-company="Unwrap.ai" data-value="Tailor project bullets" type="button" aria-label="Edit next action for Unwrap.ai"><small>Next action <span aria-hidden="true">✎</span></small><strong>Tailor project bullets</strong></button></div>
+              <div class="film-cell"><button class="film-edit" data-edit-field="deadline" data-company="Unwrap.ai" data-value="Jul 19" type="button" aria-label="Edit deadline for Unwrap.ai"><small>Apply by <span aria-hidden="true">✎</span></small><strong>Jul 19</strong></button></div>
+              <div class="film-cell"><button class="film-edit" data-edit-field="contact / notes" data-company="Unwrap.ai" data-value="Research mentorship" type="button" aria-label="Edit contact or notes for Unwrap.ai"><small>Note <span aria-hidden="true">✎</span></small><strong>Research mentorship</strong></button></div>
+              <div class="film-cell"><button class="icon-button" type="button" aria-label="Open Unwrap application">→</button></div>
+            </article>
+
+            <article class="film-row" data-search="northstar infrastructure engineer core search" data-stage="interview" data-status="active" data-date="month">
+              <div class="film-cell film-role">
+                <div class="company-lockup"><span class="company-logo logo-northstar" aria-hidden="true">N</span><span><small>Frame 04</small><strong class="company-name">Northstar</strong></span></div>
+                <span class="role-title">Infrastructure Engineer</span>
+              </div>
+              <div class="film-cell"><button class="film-edit" data-edit-field="stage" data-company="Northstar" data-value="Interview" type="button" aria-label="Edit stage for Northstar"><small>Stage <span aria-hidden="true">✎</span></small><strong><span class="stage-tag stage-interview">Interview</span></strong></button></div>
+              <div class="film-cell"><button class="film-edit" data-edit-field="applied" data-company="Northstar" data-value="Jul 03" type="button" aria-label="Edit applied date for Northstar"><small>Applied <span aria-hidden="true">✎</span></small><strong>Jul 03</strong></button></div>
+              <div class="film-cell"><button class="film-edit" data-edit-field="next action" data-company="Northstar" data-value="Hiring manager call" type="button" aria-label="Edit next action for Northstar"><small>Next action <span aria-hidden="true">✎</span></small><strong>Hiring manager call</strong></button></div>
+              <div class="film-cell"><button class="film-edit" data-edit-field="deadline" data-company="Northstar" data-value="Jul 17 · 14:30" type="button" aria-label="Edit deadline for Northstar"><small>Due <span aria-hidden="true">✎</span></small><strong>Jul 17 · 14:30</strong></button></div>
+              <div class="film-cell"><button class="film-edit" data-edit-field="contact / notes" data-company="Northstar" data-value="Sam Ortiz · Eng" type="button" aria-label="Edit contact or notes for Northstar"><small>Contact <span aria-hidden="true">✎</span></small><strong>Sam Ortiz · Eng</strong></button></div>
+              <div class="film-cell"><button class="icon-button" type="button" aria-label="Open Northstar application">→</button></div>
+            </article>
+
+            <article class="film-row" data-search="fathom software engineer new grad data products" data-stage="offer" data-status="active" data-date="month">
+              <div class="film-cell film-role">
+                <div class="company-lockup"><span class="company-logo logo-fathom" aria-hidden="true">F</span><span><small>Frame 05</small><strong class="company-name">Fathom</strong></span></div>
+                <span class="role-title">Software Engineer, New Grad</span>
+              </div>
+              <div class="film-cell"><button class="film-edit" data-edit-field="stage" data-company="Fathom" data-value="Offer" type="button" aria-label="Edit stage for Fathom"><small>Stage <span aria-hidden="true">✎</span></small><strong><span class="stage-tag stage-offer">Offer</span></strong></button></div>
+              <div class="film-cell"><button class="film-edit" data-edit-field="applied" data-company="Fathom" data-value="Jun 28" type="button" aria-label="Edit applied date for Fathom"><small>Applied <span aria-hidden="true">✎</span></small><strong>Jun 28</strong></button></div>
+              <div class="film-cell"><button class="film-edit" data-edit-field="next action" data-company="Fathom" data-value="Review offer details" type="button" aria-label="Edit next action for Fathom"><small>Next action <span aria-hidden="true">✎</span></small><strong>Review offer details</strong></button></div>
+              <div class="film-cell"><button class="film-edit" data-edit-field="deadline" data-company="Fathom" data-value="Jul 21" type="button" aria-label="Edit deadline for Fathom"><small>Respond by <span aria-hidden="true">✎</span></small><strong>Jul 21</strong></button></div>
+              <div class="film-cell"><button class="film-edit" data-edit-field="contact / notes" data-company="Fathom" data-value="Priya Rao · People" type="button" aria-label="Edit contact or notes for Fathom"><small>Contact <span aria-hidden="true">✎</span></small><strong>Priya Rao · People</strong></button></div>
+              <div class="film-cell"><button class="icon-button" type="button" aria-label="Open Fathom application">→</button></div>
+            </article>
+
+            <article class="film-row" data-search="altom data engineering intern logistics" data-stage="applied" data-status="closed" data-date="older">
+              <div class="film-cell film-role">
+                <div class="company-lockup"><span class="company-logo logo-altom" aria-hidden="true">A</span><span><small>Frame 06</small><strong class="company-name">Altom</strong></span></div>
+                <span class="role-title">Data Engineering Intern</span>
+              </div>
+              <div class="film-cell"><button class="film-edit" data-edit-field="stage" data-company="Altom" data-value="Closed" type="button" aria-label="Edit stage for Altom"><small>Stage <span aria-hidden="true">✎</span></small><strong><span class="stage-tag">Closed</span></strong></button></div>
+              <div class="film-cell"><button class="film-edit" data-edit-field="applied" data-company="Altom" data-value="Jun 05" type="button" aria-label="Edit applied date for Altom"><small>Applied <span aria-hidden="true">✎</span></small><strong>Jun 05</strong></button></div>
+              <div class="film-cell"><button class="film-edit" data-edit-field="next action" data-company="Altom" data-value="Role filled" type="button" aria-label="Edit next action for Altom"><small>Outcome <span aria-hidden="true">✎</span></small><strong>Role filled</strong></button></div>
+              <div class="film-cell"><button class="film-edit" data-edit-field="deadline" data-company="Altom" data-value="Jun 30" type="button" aria-label="Edit deadline for Altom"><small>Closed <span aria-hidden="true">✎</span></small><strong>Jun 30</strong></button></div>
+              <div class="film-cell"><button class="film-edit" data-edit-field="contact / notes" data-company="Altom" data-value="Keep company watched" type="button" aria-label="Edit contact or notes for Altom"><small>Note <span aria-hidden="true">✎</span></small><strong>Keep company watched</strong></button></div>
+              <div class="film-cell"><button class="icon-button" type="button" aria-label="Open Altom application">→</button></div>
+            </article>
+          </div>
+        </section>
+      </div>
+    </main>
+  </body>
+</html>
