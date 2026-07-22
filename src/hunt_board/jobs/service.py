@@ -15,15 +15,24 @@ def source_summary(source: Source | None) -> dict | None:
         "name": source.name,
         "ats": source.ats,
         "company_name": source.company_name,
+        "company_logo_url": source.company_logo_url,
     }
 
 
-def job_summary(job: JobPosting) -> dict:
+def job_summary(job: JobPosting, source: Source | None = None) -> dict:
     return {
         "id": job.id,
+        "source_slug": job.source_slug,
         "title": job.title,
         "company_name": job.company_name,
         "location": job.location,
+        "location_country_code": job.location_country_code,
+        "location_country": job.location_country,
+        "salary_min": job.salary_min,
+        "salary_max": job.salary_max,
+        "salary_currency": job.salary_currency,
+        "salary_interval": job.salary_interval,
+        "company_logo_url": source.company_logo_url if source else None,
         "apply_url": job.apply_url,
         "ranking_score": job.ranking_score,
         "active": job.active,
@@ -51,9 +60,16 @@ def job_read_payload(
         "external_job_id": job.external_job_id,
         "title": job.title,
         "location": job.location,
+        "location_country_code": job.location_country_code,
+        "location_country": job.location_country,
         "department": job.department,
         "employment_type": job.employment_type,
         "workplace_type": job.workplace_type,
+        "salary_min": job.salary_min,
+        "salary_max": job.salary_max,
+        "salary_currency": job.salary_currency,
+        "salary_interval": job.salary_interval,
+        "company_logo_url": source.company_logo_url if source else None,
         "posting_url": job.posting_url,
         "apply_url": job.apply_url,
         "description_html": job.description_html,

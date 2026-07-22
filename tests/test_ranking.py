@@ -33,6 +33,8 @@ def test_exact_include_phrase_beats_exclude() -> None:
 
     assert result.matched is True
     assert result.score > 70
+    assert all("age_days=" not in reason for reason in result.reasons)
+    assert any(reason == "posted today" for reason in result.reasons)
 
 
 def test_exclude_applies_after_include_matching() -> None:

@@ -3,7 +3,9 @@ from __future__ import annotations
 from datetime import datetime, timezone
 from typing import Any
 
-from sqlalchemy import Boolean, DateTime, Float, ForeignKey, Index, Integer, JSON, String, Text, UniqueConstraint
+from decimal import Decimal
+
+from sqlalchemy import Boolean, DateTime, Float, ForeignKey, Index, Integer, JSON, Numeric, String, Text, UniqueConstraint
 from sqlalchemy.orm import Mapped, mapped_column, relationship
 
 from hunt_board.db.base import Base
@@ -63,6 +65,7 @@ class Source(TimestampMixin, Base):
     name: Mapped[str] = mapped_column(String(255), nullable=False)
     ats: Mapped[str] = mapped_column(String(40), nullable=False)
     company_name: Mapped[str] = mapped_column(String(255), nullable=False)
+    company_logo_url: Mapped[str | None] = mapped_column(String(1000))
     careers_url: Mapped[str | None] = mapped_column(String(1000))
     enabled: Mapped[bool] = mapped_column(Boolean, default=True, nullable=False)
     priority: Mapped[int] = mapped_column(Integer, default=0, nullable=False)
@@ -90,6 +93,7 @@ class JobPosting(TimestampMixin, Base):
         Index("ix_job_postings_company_name", "company_name"),
         Index("ix_job_postings_title", "title"),
         Index("ix_job_postings_location", "location"),
+        Index("ix_job_postings_location_country_code", "location_country_code"),
     )
 
     id: Mapped[int] = mapped_column(Integer, primary_key=True)
@@ -101,9 +105,15 @@ class JobPosting(TimestampMixin, Base):
     normalized_title: Mapped[str] = mapped_column(String(500), nullable=False)
     location: Mapped[str | None] = mapped_column(String(500))
     normalized_location: Mapped[str | None] = mapped_column(String(500))
+    location_country_code: Mapped[str | None] = mapped_column(String(2))
+    location_country: Mapped[str | None] = mapped_column(String(120))
     department: Mapped[str | None] = mapped_column(String(255))
     employment_type: Mapped[str | None] = mapped_column(String(120))
     workplace_type: Mapped[str | None] = mapped_column(String(120))
+    salary_min: Mapped[Decimal | None] = mapped_column(Numeric(14, 2))
+    salary_max: Mapped[Decimal | None] = mapped_column(Numeric(14, 2))
+    salary_currency: Mapped[str | None] = mapped_column(String(3))
+    salary_interval: Mapped[str | None] = mapped_column(String(40))
     posting_url: Mapped[str | None] = mapped_column(String(1000))
     apply_url: Mapped[str | None] = mapped_column(String(1000))
     canonical_apply_url: Mapped[str | None] = mapped_column(String(1000))

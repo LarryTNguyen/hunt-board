@@ -1,6 +1,7 @@
 from __future__ import annotations
 
 from datetime import datetime, timezone
+from decimal import Decimal
 from pathlib import Path
 
 from sqlalchemy import select
@@ -28,6 +29,10 @@ def _job(
     score: float = 80,
     active: bool = True,
     duplicate_status: str = "unique",
+    country_code: str | None = "US",
+    country_name: str | None = "United States",
+    salary_min: Decimal | None = None,
+    salary_max: Decimal | None = None,
 ) -> JobPosting:
     now = datetime.now(timezone.utc)
     job = JobPosting(
@@ -39,7 +44,13 @@ def _job(
         normalized_title=title.lower(),
         location=location,
         normalized_location=location.lower(),
+        location_country_code=country_code,
+        location_country=country_name,
         workplace_type="remote" if "remote" in location.lower() else "onsite",
+        salary_min=salary_min,
+        salary_max=salary_max,
+        salary_currency="USD" if salary_min is not None or salary_max is not None else None,
+        salary_interval="year" if salary_min is not None or salary_max is not None else None,
         apply_url=f"https://jobs.example.com/{external_id}",
         canonical_apply_url=f"https://jobs.example.com/{external_id}",
         description_text="Build useful things.",
@@ -58,8 +69,8 @@ def _job(
 
 def test_rich_job_browsing_filters_sorts_paginates_and_enriches(client, db_session) -> None:
     source = _seed(db_session)
-    top = _job(db_session, source, "1", "Backend Engineer", score=95)
-    _job(db_session, source, "2", "Data Analyst", company="Beta", location="New York", score=70)
+    top = _job(db_session, source, "1", "Backend Engineer", score=95, salary_min=Decimal("120000"), salary_max=Decimal("160000"))
+    _job(db_session, source, "2", "Data Analyst", company="Beta", location="Toronto", score=70, country_code="CA", country_name="Canada")
     _job(db_session, source, "3", "Duplicate Backend Engineer", score=99, duplicate_status="duplicate")
     _job(db_session, source, "4", "Closed Engineer", score=90, active=False)
     db_session.commit()
@@ -73,12 +84,22 @@ def test_rich_job_browsing_filters_sorts_paginates_and_enriches(client, db_sessi
     assert default_jobs[0]["has_application"] is True
     assert default_jobs[0]["application_status"]["slug"] == "applied"
     assert default_jobs[0]["source"]["ats"] == "greenhouse"
+    assert default_jobs[0]["company_logo_url"] == "https://example.com/acme-logo.svg"
+    assert default_jobs[0]["location_country_code"] == "US"
+    assert default_jobs[0]["location_country"] == "United States"
+    assert default_jobs[0]["salary_min"] == 120000
+    assert default_jobs[0]["salary_max"] == 160000
+    assert default_jobs[0]["salary_currency"] == "USD"
+    assert default_jobs[0]["salary_interval"] == "year"
 
     assert len(client.get("/jobs", params={"include_duplicates": True}).json()) == 3
     assert len(client.get("/jobs", params={"active": False}).json()) == 1
     assert client.get("/jobs", params={"title": "analyst"}).json()[0]["company_name"] == "Beta"
     assert client.get("/jobs", params={"company": "bet"}).json()[0]["title"] == "Data Analyst"
-    assert client.get("/jobs", params={"location": "new york"}).json()[0]["title"] == "Data Analyst"
+    assert client.get("/jobs", params={"location": "toronto"}).json()[0]["title"] == "Data Analyst"
+    assert client.get("/jobs", params={"country": "CA"}).json()[0]["title"] == "Data Analyst"
+    assert client.get("/jobs", params={"country": "United States"}).json()[0]["title"] == "Backend Engineer"
+    assert client.get("/jobs", params={"salary_known": True}).json()[0]["title"] == "Backend Engineer"
     assert client.get("/jobs", params={"source_slug": "acme"}).status_code == 200
     assert client.get("/jobs", params={"ats": "greenhouse"}).status_code == 200
     assert len(client.get("/jobs", params={"remote_only": True}).json()) == 1
@@ -144,7 +165,9 @@ def test_saved_job_workflow_is_idempotent_and_updates_job_state(client, db_sessi
     changed = client.patch(f"/saved-jobs/{first.json()['id']}", json={"notes": "Updated note"})
     assert changed.status_code == 200
     assert changed.json()["notes"] == "Updated note"
-    assert client.get("/saved-jobs").json()[0]["job"]["id"] == job.id
+    saved_payload = client.get("/saved-jobs").json()[0]["job"]
+    assert saved_payload["id"] == job.id
+    assert saved_payload["source_slug"] == "acme"
     assert client.get(f"/jobs/{job.id}").json()["is_saved"] is True
 
     removed = client.delete(f"/jobs/{job.id}/save")
@@ -197,6 +220,12 @@ def test_application_tracker_status_events_and_filters(client, db_session) -> No
     assert detail["job"]["id"] == job.id
     assert detail["source"]["slug"] == "acme"
     assert client.get(f"/jobs/{job.id}").json()["application_status"]["slug"] == "oa-received"
+
+    removed = client.delete(f"/applications/{application_id}")
+    assert removed.status_code == 200
+    assert removed.json() == {"application_id": application_id, "job_id": job.id, "removed": True}
+    assert client.get(f"/jobs/{job.id}").json()["has_application"] is False
+    assert client.get(f"/applications/{application_id}/events").status_code == 404
 
 
 def test_duplicate_reviews_are_self_contained_and_resolution_controls_visibility(client, db_session) -> None:

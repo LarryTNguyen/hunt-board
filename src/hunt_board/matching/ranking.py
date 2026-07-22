@@ -101,7 +101,12 @@ def rank_job(job: NormalizedJob, preferences: UserPreferences | None = None, sou
         seen_at = seen_at.replace(tzinfo=timezone.utc)
     age_days = max((now - seen_at).days, 0)
     freshness_score = max(0, 20 - min(age_days, 20))
-    reasons.append(f"freshness age_days={age_days}")
+    if age_days == 0:
+        reasons.append("posted today")
+    elif age_days == 1:
+        reasons.append("posted 1 day ago")
+    else:
+        reasons.append(f"posted {age_days} days ago")
 
     location_value = normalize_text(" ".join(filter(None, [job.location, job.workplace_type]))) or ""
     location_score = 15 if any(_contains_phrase(location_value, location) for location in prefs.preferred_locations) else 6
@@ -109,7 +114,7 @@ def rank_job(job: NormalizedJob, preferences: UserPreferences | None = None, sou
 
     priority_score = min(max(source_priority, 0), 5)
     if priority_score:
-        reasons.append(f"source priority {priority_score}")
+        reasons.append(f"source priority: {priority_score} of 5")
 
     score = round(title_score + level_score + freshness_score + location_score + priority_score, 2)
     return RankingResult(min(score, 100), reasons, matched=True)

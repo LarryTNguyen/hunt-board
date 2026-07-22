@@ -3,11 +3,12 @@ from __future__ import annotations
 from datetime import datetime, timezone
 
 from fastapi import APIRouter, Depends, HTTPException, Query
-from sqlalchemy import and_, func, or_, select
+from sqlalchemy import and_, delete, func, or_, select
 from sqlalchemy.orm import Session
 
 from hunt_board.api.schemas import (
     ApplicationCreate,
+    ApplicationDeleteResponse,
     ApplicationEventCreate,
     ApplicationEventRead,
     ApplicationRead,
@@ -79,7 +80,7 @@ def _application_payload(
         "created_at": application.created_at,
         "updated_at": application.updated_at,
         "status": current_status,
-        "job": job_summary(job),
+        "job": job_summary(job, source),
         "source": source_summary(source),
         "events": events,
     }
@@ -97,8 +98,9 @@ def list_saved_jobs(
         Application.user_id == user.id,
     )
     rows = db.execute(
-        select(SavedJob, JobPosting, ApplicationStatus)
+        select(SavedJob, JobPosting, Source, ApplicationStatus)
         .join(JobPosting, JobPosting.id == SavedJob.job_posting_id)
+        .join(Source, Source.id == JobPosting.source_id)
         .outerjoin(Application, application_join)
         .outerjoin(ApplicationStatus, ApplicationStatus.id == Application.status_id)
         .where(SavedJob.user_id == user.id)
@@ -112,10 +114,10 @@ def list_saved_jobs(
             "saved_at": saved.created_at,
             "updated_at": saved.updated_at,
             "notes": saved.notes,
-            "job": job_summary(job),
+            "job": job_summary(job, source),
             "application_status": status,
         }
-        for saved, job, status in rows
+        for saved, job, source, status in rows
     ]
 
 
@@ -142,12 +144,13 @@ def save_job(
         .join(Application, Application.status_id == ApplicationStatus.id)
         .where(Application.user_id == user.id, Application.job_posting_id == job_id)
     )
+    source = db.get(Source, job.source_id)
     return {
         "id": saved.id,
         "saved_at": saved.created_at,
         "updated_at": saved.updated_at,
         "notes": saved.notes,
-        "job": job_summary(job),
+        "job": job_summary(job, source),
         "application_status": status,
     }
 
@@ -175,8 +178,9 @@ def list_discarded_jobs(
 ) -> list[dict]:
     user = get_single_user(db)
     rows = db.execute(
-        select(DiscardedJob, JobPosting)
+        select(DiscardedJob, JobPosting, Source)
         .join(JobPosting, JobPosting.id == DiscardedJob.job_posting_id)
+        .join(Source, Source.id == JobPosting.source_id)
         .where(DiscardedJob.user_id == user.id)
         .order_by(DiscardedJob.created_at.desc(), DiscardedJob.id.desc())
         .offset(offset)
@@ -186,9 +190,9 @@ def list_discarded_jobs(
         {
             "id": discarded.id,
             "discarded_at": discarded.created_at,
-            "job": job_summary(job),
+            "job": job_summary(job, source),
         }
-        for discarded, job in rows
+        for discarded, job, source in rows
     ]
 
 
@@ -209,10 +213,11 @@ def discard_job(job_id: int, db: Session = Depends(get_db)) -> dict:
         db.add(discarded)
         db.commit()
         db.refresh(discarded)
+    source = db.get(Source, job.source_id)
     return {
         "id": discarded.id,
         "discarded_at": discarded.created_at,
-        "job": job_summary(job),
+        "job": job_summary(job, source),
     }
 
 
@@ -245,6 +250,7 @@ def update_saved_job(saved_job_id: int, payload: SavedJobUpdate, db: Session = D
     db.commit()
     db.refresh(saved)
     job = db.get(JobPosting, saved.job_posting_id)
+    source = db.get(Source, job.source_id) if job else None
     status = db.scalar(
         select(ApplicationStatus)
         .join(Application, Application.status_id == ApplicationStatus.id)
@@ -255,7 +261,7 @@ def update_saved_job(saved_job_id: int, payload: SavedJobUpdate, db: Session = D
         "saved_at": saved.created_at,
         "updated_at": saved.updated_at,
         "notes": saved.notes,
-        "job": job_summary(job),
+        "job": job_summary(job, source),
         "application_status": status,
     }
 
@@ -403,6 +409,21 @@ def update_application(application_id: int, payload: ApplicationUpdate, db: Sess
     db.commit()
     db.refresh(application)
     return _application_payload(db, application, job, source, current_status)
+
+
+@router.delete("/applications/{application_id}", response_model=ApplicationDeleteResponse)
+def delete_application(application_id: int, db: Session = Depends(get_db)) -> dict:
+    user = get_single_user(db)
+    application = db.scalar(
+        select(Application).where(Application.id == application_id, Application.user_id == user.id)
+    )
+    if application is None:
+        raise HTTPException(status_code=404, detail="Application not found")
+    job_id = application.job_posting_id
+    db.execute(delete(ApplicationEvent).where(ApplicationEvent.application_id == application.id))
+    db.delete(application)
+    db.commit()
+    return {"application_id": application_id, "job_id": job_id, "removed": True}
 
 
 @router.get("/applications/{application_id}/events", response_model=list[ApplicationEventRead])

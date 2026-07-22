@@ -1,6 +1,6 @@
 # Hunt Board
 
-Hunt Board is a backend-first job intelligence and personal job-search CRM. Milestone 1 ingests and ranks curated Greenhouse, Lever, and Ashby jobs. Milestone 2 adds richer job browsing, editable matching preferences and rescoring, saved jobs, application tracking and event timelines, an in-app notification inbox, and actionable duplicate review APIs.
+Hunt Board is a backend-first job intelligence and personal job-search CRM. Milestone 1 ingests and ranks curated Greenhouse, Lever, and Ashby jobs. Milestone 2 adds the single-user workflow APIs. Milestone 3 serves a live, responsive field-desk frontend from FastAPI for discovery, saved jobs, application tracking, notifications, preferences, and duplicate review.
 
 ## Quick start with Docker
 
@@ -32,16 +32,20 @@ uv run hunt-board seed
 uv run uvicorn hunt_board.main:app --reload
 ```
 
-### Static landing page
+### Live frontend
 
-The frontend concept is a standalone static page and does not call the Hunt Board API.
+Start the API, then open `http://127.0.0.1:8000/app/`. The live frontend is served by
+FastAPI from `src/hunt_board/web/static/`, uses same-origin API requests, and has no npm
+dependencies or frontend build step.
 
-```powershell
-uv run python -m http.server 4173 --directory landing
-```
+The files in `mock-designs/` are the archived static visual reference. Their sample rows and
+preview interactions do not persist. The pages under `/app/` are the live product and read or
+write the database through the existing FastAPI routes.
 
-Then open `http://localhost:4173`. The page uses plain HTML, CSS, and a small script for
-the responsive navigation menu, so it has no build step.
+The normal seed command intentionally creates only the single-user defaults, statuses, and
+configured sources. To populate job data, run fixture-backed tests for development or ingest
+configured ATS sources with `uv run hunt-board ingest`; Milestone 3 does not silently insert
+demo records.
 
 ## Configuration
 
@@ -53,7 +57,7 @@ the responsive navigation menu, so it has no build step.
 - `HUNT_BOARD_HTTP_MAX_RETRIES`: retries for timeouts, network failures, HTTP 408/429, and HTTP 5xx responses; defaults to `2`.
 - `HUNT_BOARD_HTTP_RETRY_BACKOFF_SECONDS`: base exponential retry delay; defaults to `0.5`.
 
-The source registry supports the milestone shape (`company_name`, `careers_url`, `ats_type`, `ats_slug`, high/medium/low `priority`, `enabled`, `categories`, and `notes`) and the existing explicit `config` shape. ATS slugs are always manually configured; no scraping-based ATS detection is performed.
+The source registry supports the milestone shape (`company_name`, `company_logo_url`, `careers_url`, `ats_type`, `ats_slug`, high/medium/low `priority`, `enabled`, `categories`, and `notes`) and the existing explicit `config` shape. `company_logo_url` is the authoritative logo; the frontend falls back to company initials if it is absent or fails to load. ATS slugs are always manually configured; no scraping-based ATS detection is performed.
 
 ## Database and source commands
 
@@ -92,6 +96,7 @@ Source fetches run concurrently, while SQLAlchemy writes remain serial and trans
 - `GET /discarded-jobs` and `POST/DELETE /jobs/{job_id}/discard`
 - `GET /application-statuses`
 - `GET /applications`, `POST /jobs/{job_id}/applications`, and `GET/PATCH /applications/{application_id}`
+- `DELETE /applications/{application_id}` to remove an accidentally tracked application and its events
 - `GET/POST /applications/{application_id}/events`
 - `GET /notifications`, `PATCH /notifications/{notification_id}/read`, and `POST /notifications/read-all`
 - `GET /admin/sources`
@@ -104,7 +109,9 @@ Source fetches run concurrently, while SQLAlchemy writes remain serial and trans
 
 Legacy `/api/jobs`, `/api/admin/*`, and `/api/ingest/run` paths remain available.
 
-`GET /jobs` remains a list response for Milestone 1 compatibility and now accepts `limit`/`offset`, filters for source/company/location/workplace/score/saved/discarded/application state, duplicate controls, and documented sort fields. Active jobs ranked by score remain the default, with confirmed duplicates and discarded jobs excluded. Use `discarded=true` or `GET /discarded-jobs` to review the discard pile; deleting the per-user discard record restores the job without deleting its normalized posting.
+`GET /jobs` remains a list response for Milestone 1 compatibility and now accepts `limit`/`offset`, filters for source/company/location/country/workplace/salary availability/score/saved/discarded/application state, duplicate controls, and documented sort fields. Use `country=US` (ISO alpha-2) or `country=United States`, and `salary_known=true|false`, for the normalized filters. Active jobs ranked by score remain the default, with confirmed duplicates and discarded jobs excluded. Use `discarded=true` or `GET /discarded-jobs` to review the discard pile; deleting the per-user discard record restores the job without deleting its normalized posting.
+
+Job responses expose `location_country_code`, `location_country`, `salary_min`, `salary_max`, `salary_currency`, `salary_interval`, and `company_logo_url`. Country values come from explicit ATS fields first, then conservative location parsing. Salary values are normalized only from explicit ATS compensation structures; Hunt Board does not infer pay from prose.
 
 ## Milestone 2 workflow examples
 
@@ -139,6 +146,22 @@ cross-linked discovery, job detail, saved jobs, application tracker, notificatio
 preferences, and duplicate-review pages. The controls use sample data and lightweight local
 JavaScript only; they do not call the API or persist changes.
 
+## Milestone 3 manual QA
+
+After the quick-start commands and at least one ingestion run:
+
+1. Open `/app/` and follow the live navigation on both desktop and a narrow viewport.
+2. In Discover, search and filter jobs (including country); verify logos, resolved countries, and available salary ranges; save, hide, restore, and add a job to the tracker.
+3. Open a job dossier; verify notes, save/unsave, official links, and application creation.
+4. Edit a saved-job note and remove a saved card.
+5. Change an application stage, edit notes, add a manual timeline event, and remove an accidental tracker entry.
+6. Mark one inbox dispatch read, then mark all read and confirm the navigation badge changes.
+7. Save preferences, run a rescore, and review the result summary.
+8. Resolve an open duplicate review and confirm the next case is selected.
+
+All live pages provide loading, empty, and API error states. ATS descriptions are rendered as
+plain text; raw `description_html` is never injected into the document.
+
 ## Tests
 
 Tests are offline and use saved ATS JSON fixtures plus an in-memory SQLite database:
@@ -147,4 +170,4 @@ Tests are offline and use saved ATS JSON fixtures plus an in-memory SQLite datab
 uv run pytest
 ```
 
-See [architecture](docs/architecture.md), [Milestone 2 workflows](docs/milestone-2.md), and [ingestion pipeline](docs/ingestion-pipeline.md) for design details.
+See [architecture](docs/architecture.md), [Milestone 2 workflows](docs/milestone-2.md), [Milestone 3 frontend](docs/milestone-3.md), and [ingestion pipeline](docs/ingestion-pipeline.md) for design details.

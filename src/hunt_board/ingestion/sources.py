@@ -15,6 +15,7 @@ class SourceConfig(BaseModel):
     name: str
     ats: ATSName
     company_name: str
+    company_logo_url: str | None = None
     careers_url: str | None = None
     enabled: bool = True
     priority: int = 0
