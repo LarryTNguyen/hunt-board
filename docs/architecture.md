@@ -1,4 +1,4 @@
-# Hunt Board Architecture through Milestone 2
+# Hunt Board Architecture through Milestone 3
 
 Hunt Board uses a conventional Python `src/` layout. The FastAPI application is assembled in `hunt_board.main`, while database, ingestion, matching, job-domain, API, and admin concerns remain in separate packages.
 
@@ -14,7 +14,7 @@ Hunt Board uses a conventional Python `src/` layout. The FastAPI application is 
 - `tracking`: saved-job and application/application-event HTTP workflows.
 - `notifications`: a synchronous, database-backed in-app inbox with no external delivery infrastructure.
 
-PostgreSQL is the source of truth. A posting stores its latest normalized fields, latest raw ATS payload, raw-payload expiry date, description hash, visibility score, lifecycle state, and source identity. `job_versions` retains each distinct description payload. Normalized records are never deleted by ingestion.
+PostgreSQL is the source of truth. A posting stores its latest normalized fields, including an ISO country code and structured compensation range when the ATS provides them, plus the latest raw ATS payload, raw-payload expiry date, description hash, visibility score, lifecycle state, and source identity. Company logo URLs belong to the normalized source record rather than being copied into every posting. `job_versions` retains each distinct description payload. Normalized records are never deleted by ingestion.
 
 The single-user MVP models users, preferences, matches, saved jobs, applications, application statuses/events, and notifications separately. `user_preferences` is canonical; `users.preferences_json` is updated only as a compatibility snapshot. `applications.status_id` is canonical; the legacy `applications.status` string is kept synchronized as a display/compatibility slug.
 
@@ -28,6 +28,6 @@ Real ingestion creates notifications synchronously in the source transaction. St
 
 Docker Compose runs PostgreSQL and the FastAPI backend. Backend startup applies Alembic migrations and runs the idempotent seed command before serving requests. Secrets and environment-specific values are read from environment variables; the YAML source registry contains no credentials.
 
-## Deliberate Milestone 2 boundaries
+## Deliberate boundaries
 
-The system remains backend-only and single-user. There is no login/session layer, frontend, resume analysis, email or push delivery, scheduled notification worker, full-text search service, task queue, or new ATS adapter. Search uses indexed/normalized relational fields and SQL substring matching.
+The system remains single-user. The Milestone 3 frontend is served as same-origin static HTML/CSS/JavaScript from FastAPI. There is no login/session layer, resume analysis, email or push delivery, scheduled notification worker, full-text search service, task queue, or new ATS adapter. Search uses indexed/normalized relational fields and SQL substring matching.

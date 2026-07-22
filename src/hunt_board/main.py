@@ -1,6 +1,9 @@
 from __future__ import annotations
 
-from fastapi import Depends, FastAPI, HTTPException
+from pathlib import Path
+
+from fastapi import Depends, FastAPI, HTTPException, Request
+from fastapi.staticfiles import StaticFiles
 from sqlalchemy import text
 from sqlalchemy.exc import SQLAlchemyError
 from sqlalchemy.orm import Session
@@ -15,7 +18,14 @@ from hunt_board.tracking.api import router as tracking_router
 
 
 def create_app() -> FastAPI:
-    app = FastAPI(title="Hunt Board", version="0.2.0")
+    app = FastAPI(title="Hunt Board", version="0.3.0")
+
+    @app.middleware("http")
+    async def prevent_stale_frontend_assets(request: Request, call_next):
+        response = await call_next(request)
+        if request.url.path == "/app" or request.url.path.startswith("/app/"):
+            response.headers["Cache-Control"] = "no-store"
+        return response
 
     @app.get("/health")
     def health() -> dict[str, str]:
@@ -40,6 +50,8 @@ def create_app() -> FastAPI:
     app.include_router(ingest_router)
     app.include_router(admin_router)
     app.include_router(admin_router, prefix="/api", include_in_schema=False)
+    web_root = Path(__file__).parent / "web" / "static"
+    app.mount("/app", StaticFiles(directory=web_root, html=True), name="app")
     return app
 
 

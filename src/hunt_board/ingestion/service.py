@@ -344,6 +344,7 @@ class IngestionService:
         source.name = config.name
         source.ats = config.ats
         source.company_name = config.company_name
+        source.company_logo_url = config.company_logo_url
         source.careers_url = config.careers_url
         source.enabled = config.enabled
         source.priority = config.priority
@@ -421,9 +422,15 @@ class IngestionService:
         target.normalized_title = normalize_text(job.title) or ""
         target.location = self._display_location(job)
         target.normalized_location = normalize_text(target.location)
+        target.location_country_code = job.location_country_code
+        target.location_country = job.location_country
         target.department = job.department
         target.employment_type = job.employment_type
         target.workplace_type = job.workplace_type
+        target.salary_min = job.salary_min
+        target.salary_max = job.salary_max
+        target.salary_currency = job.salary_currency
+        target.salary_interval = job.salary_interval
         target.posting_url = job.posting_url
         target.apply_url = job.apply_url
         target.canonical_apply_url = canonicalize_url(job.apply_url)
@@ -495,9 +502,15 @@ class IngestionService:
             (target.normalized_title, normalize_text(job.title) or ""),
             (target.location, location),
             (target.normalized_location, normalize_text(location)),
+            (target.location_country_code, job.location_country_code),
+            (target.location_country, job.location_country),
             (target.department, job.department),
             (target.employment_type, job.employment_type),
             (target.workplace_type, job.workplace_type),
+            (target.salary_min, job.salary_min),
+            (target.salary_max, job.salary_max),
+            (target.salary_currency, job.salary_currency),
+            (target.salary_interval, job.salary_interval),
             (target.posting_url, job.posting_url),
             (target.apply_url, job.apply_url),
             (target.canonical_apply_url, canonicalize_url(job.apply_url)),

@@ -68,3 +68,4 @@ def test_admin_source_sync_api(client) -> None:
     sources = client.get("/admin/sources")
     assert sources.status_code == 200
     assert {source["slug"] for source in sources.json()} == {"discord", "highlevel", "notion"}
+    assert all(source["company_logo_url"] for source in sources.json())

@@ -1,6 +1,7 @@
 from __future__ import annotations
 
 import asyncio
+from decimal import Decimal
 from pathlib import Path
 
 import pytest
@@ -53,6 +54,12 @@ def _job(external_id: str = "1", title: str = "Backend Engineer") -> NormalizedJ
         description_html="<p>Build APIs.</p>",
         description_text="Build APIs.",
         raw_json={"id": external_id},
+        location_country_code="US",
+        location_country="United States",
+        salary_min=Decimal("100000"),
+        salary_max=Decimal("140000"),
+        salary_currency="USD",
+        salary_interval="year",
     )
 
 
@@ -81,6 +88,14 @@ async def test_ingestion_writes_metrics_and_marks_closed(db_session) -> None:
     assert first.total_fetched == 2
     assert db_session.scalar(select(ScrapeRun)).status == "completed"
     assert len(db_session.scalars(select(JobPosting)).all()) == 2
+    stored = db_session.scalar(select(JobPosting).where(JobPosting.external_job_id == "1"))
+    assert stored.location_country_code == "US"
+    assert stored.location_country == "United States"
+    assert stored.salary_min == Decimal("100000")
+    assert stored.salary_max == Decimal("140000")
+    assert stored.salary_currency == "USD"
+    assert stored.salary_interval == "year"
+    assert stored.source.company_logo_url == "https://example.com/acme-logo.svg"
 
     service = IngestionService(str(SOURCE_FILE), adapter_overrides={"acme": FakeAdapter([_job("1")])})
     for _ in range(11):

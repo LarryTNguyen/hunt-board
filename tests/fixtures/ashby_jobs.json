@@ -4,13 +4,14 @@
       "id": "ash-1",
       "title": "Python Platform Engineer",
       "locationName": "Remote",
+      "address": {"postalAddress": {"addressCountry": "USA"}},
       "departmentName": "Engineering",
       "employmentType": "Full-time",
       "workplaceType": "remote",
       "applyUrl": "https://jobs.ashbyhq.com/acme/ash-1",
       "descriptionHtml": "<p>Own platform services.</p>",
+      "compensation": {"summaryComponents": [{"compensationType": "Salary", "interval": "1 YEAR", "currencyCode": "USD", "minValue": 130000, "maxValue": 175000}]},
       "publishedAt": "2026-07-02T12:00:00Z"
     }
   ]
 }
-

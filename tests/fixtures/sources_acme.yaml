@@ -3,7 +3,7 @@ sources:
     name: Acme
     ats: greenhouse
     company_name: Acme
+    company_logo_url: https://example.com/acme-logo.svg
     enabled: true
     priority: 3
     config: {board_token: acme}
-

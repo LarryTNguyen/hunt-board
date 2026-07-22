@@ -14,6 +14,7 @@ class SourceSummaryRead(BaseModel):
     name: str
     ats: str
     company_name: str
+    company_logo_url: str | None
 
 
 class ApplicationStatusRead(BaseModel):
@@ -35,9 +36,16 @@ class JobPostingRead(BaseModel):
     external_job_id: str | None
     title: str
     location: str | None
+    location_country_code: str | None
+    location_country: str | None
     department: str | None
     employment_type: str | None
     workplace_type: str | None
+    salary_min: float | None
+    salary_max: float | None
+    salary_currency: str | None
+    salary_interval: str | None
+    company_logo_url: str | None
     posting_url: str | None
     apply_url: str | None
     description_html: str | None
@@ -67,9 +75,17 @@ class JobPostingRead(BaseModel):
 
 class JobSummaryRead(BaseModel):
     id: int
+    source_slug: str
     title: str
     company_name: str
     location: str | None
+    location_country_code: str | None
+    location_country: str | None
+    salary_min: float | None
+    salary_max: float | None
+    salary_currency: str | None
+    salary_interval: str | None
+    company_logo_url: str | None
     apply_url: str | None
     ranking_score: float
     active: bool
@@ -282,6 +298,12 @@ class ApplicationRead(BaseModel):
     events: list[ApplicationEventRead] = Field(default_factory=list)
 
 
+class ApplicationDeleteResponse(BaseModel):
+    application_id: int
+    job_id: int
+    removed: bool
+
+
 class NotificationRead(BaseModel):
     model_config = ConfigDict(from_attributes=True)
 
@@ -391,6 +413,7 @@ class SourceRead(BaseModel):
     name: str
     ats: str
     company_name: str
+    company_logo_url: str | None
     careers_url: str | None
     enabled: bool
     priority: int

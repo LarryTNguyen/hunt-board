@@ -3,6 +3,7 @@
     "id": "lev-1",
     "text": "Junior Software Engineer",
     "hostedUrl": "https://jobs.lever.co/acme/lev-1?utm_medium=social",
+    "country": "US",
     "categories": {
       "location": "New York, NY",
       "team": "Engineering",
@@ -11,7 +12,7 @@
     },
     "descriptionHtml": "<div>Ship product features.</div>",
     "descriptionPlain": "Ship product features.",
+    "salaryRange": {"currency": "USD", "interval": "per-year-salary", "min": 90000, "max": 125000},
     "createdAt": 1782907200000
   }
 ]
-

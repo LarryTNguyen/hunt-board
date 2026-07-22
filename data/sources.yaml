@@ -3,6 +3,8 @@ sources:
     name: Discord
     ats: greenhouse
     company_name: Discord
+    careers_url: https://discord.com/careers
+    company_logo_url: https://cdn.prod.website-files.com/6257adef93867e50d84d30e2/66e278299a53f5bf88615e90_Symbol.svg
     enabled: true
     priority: 1
     config:
@@ -12,6 +14,8 @@ sources:
     name: HighLevel
     ats: lever
     company_name: HighLevel
+    careers_url: https://www.gohighlevel.com/careers
+    company_logo_url: https://www.gohighlevel.com/favicon.ico
     enabled: true
     priority: 1
     config:
@@ -21,6 +25,8 @@ sources:
     name: Notion
     ats: ashby
     company_name: Notion
+    careers_url: https://www.notion.com/careers
+    company_logo_url: https://www.notion.so/images/favicon.ico
     enabled: true
     priority: 1
     config:

@@ -33,6 +33,7 @@ def sync_sources_from_yaml(db: Session, sources_path: str, *, commit: bool = Tru
         source.name = config.name
         source.ats = config.ats
         source.company_name = config.company_name
+        source.company_logo_url = config.company_logo_url
         source.careers_url = config.careers_url
         source.enabled = config.enabled
         source.priority = config.priority

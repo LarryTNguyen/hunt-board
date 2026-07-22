@@ -23,7 +23,9 @@ def list_jobs(
     source_slug: str | None = None,
     ats: str | None = None,
     location: str | None = None,
+    country: str | None = None,
     workplace_type: str | None = None,
+    salary_known: bool | None = None,
     duplicate_status: str | None = None,
     include_duplicates: bool = False,
     min_score: float | None = Query(default=None, ge=0, le=100),
@@ -75,8 +77,18 @@ def list_jobs(
         statement = statement.where(Source.ats == ats.strip().lower())
     if location:
         statement = statement.where(JobPosting.location.ilike(f"%{location.strip()}%"))
+    if country:
+        normalized_country = country.strip()
+        if len(normalized_country) == 2:
+            statement = statement.where(JobPosting.location_country_code == normalized_country.upper())
+        else:
+            statement = statement.where(JobPosting.location_country.ilike(f"%{normalized_country}%"))
     if workplace_type:
         statement = statement.where(JobPosting.workplace_type.ilike(f"%{workplace_type.strip()}%"))
+    if salary_known is True:
+        statement = statement.where(or_(JobPosting.salary_min.is_not(None), JobPosting.salary_max.is_not(None)))
+    elif salary_known is False:
+        statement = statement.where(JobPosting.salary_min.is_(None), JobPosting.salary_max.is_(None))
     if duplicate_status:
         statement = statement.where(JobPosting.duplicate_status == duplicate_status)
     elif not include_duplicates:
