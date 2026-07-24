@@ -17,6 +17,7 @@ ENV/
 # Test, coverage, and type-checking artifacts
 .pytest_cache/
 .pytest-tmp/
+.pytest-runtime/
 .coverage
 .coverage.*
 coverage.xml

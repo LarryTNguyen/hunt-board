@@ -4,18 +4,9 @@
 Hunt Board is a backend-first job intelligence system. The MVP is a single-user application that ingests jobs from curated ATS sources, stores normalized job records plus raw JSON, dedupes/repost-detects conservatively, ranks jobs against user preferences, exposes API endpoints, and records scrape run metrics.
 
 ## Current milestone
-Focus on Milestone 1 only unless the user explicitly asks otherwise:
-- FastAPI backend
-- PostgreSQL schema and Alembic migrations
-- YAML source loading
-- Greenhouse, Lever, and Ashby adapters
-- ingestion pipeline
-- conservative dedupe
-- ranking
-- admin scrape metrics APIs
-- fixture-based tests
+Milestones 1-4 are implemented. Preserve their contracts and focus on the milestone explicitly requested by the user. Milestone 4 adds the server-paginated discovery feed, PostgreSQL full-text search, URL-driven discovery UI, separate scheduler process, aggregate operations API/page, and explicit liveness/readiness routes on top of the Milestone 3.5 ingestion-hardening bridge.
 
-Do not build the frontend, deployment automation, resume analysis, email/browser notifications, multi-user product UI, OpenSearch, Celery, Redis, RabbitMQ, Kafka, or demo mode unless explicitly asked.
+Do not add Workday, browser automation, a scheduler inside FastAPI, task queues, external search infrastructure, multi-user authentication, resume analysis, or delivery notifications unless explicitly asked.
 
 ## Tech stack rules
 - Backend: Python 3.12, FastAPI, SQLAlchemy 2.0, Alembic, PostgreSQL, Pydantic, httpx, pytest.

@@ -59,6 +59,7 @@ class UserPreference(TimestampMixin, Base):
 
 class Source(TimestampMixin, Base):
     __tablename__ = "sources"
+    __table_args__ = (Index("ix_sources_enabled_next_due", "enabled", "next_due_at"),)
 
     id: Mapped[int] = mapped_column(Integer, primary_key=True)
     slug: Mapped[str] = mapped_column(String(120), nullable=False, unique=True)
@@ -69,6 +70,8 @@ class Source(TimestampMixin, Base):
     careers_url: Mapped[str | None] = mapped_column(String(1000))
     enabled: Mapped[bool] = mapped_column(Boolean, default=True, nullable=False)
     priority: Mapped[int] = mapped_column(Integer, default=0, nullable=False)
+    poll_interval_minutes: Mapped[int | None] = mapped_column(Integer)
+    close_after_missed_runs: Mapped[int] = mapped_column(Integer, default=12, nullable=False)
     categories: Mapped[list[str]] = mapped_column(JSON, default=list, nullable=False)
     notes: Mapped[str] = mapped_column(Text, default="", nullable=False)
     config_json: Mapped[dict[str, Any]] = mapped_column(JSON, default=dict, nullable=False)
@@ -94,6 +97,8 @@ class JobPosting(TimestampMixin, Base):
         Index("ix_job_postings_title", "title"),
         Index("ix_job_postings_location", "location"),
         Index("ix_job_postings_location_country_code", "location_country_code"),
+        Index("ix_job_postings_feed_default", "active", "duplicate_status", "ranking_score", "id"),
+        Index("ix_job_postings_source_id", "source_id"),
     )
 
     id: Mapped[int] = mapped_column(Integer, primary_key=True)
@@ -259,6 +264,7 @@ class DuplicateReview(TimestampMixin, Base):
 
 class ScrapeRun(TimestampMixin, Base):
     __tablename__ = "scrape_runs"
+    __table_args__ = (Index("ix_scrape_runs_started_status", "started_at", "status"),)
 
     id: Mapped[int] = mapped_column(Integer, primary_key=True)
     status: Mapped[str] = mapped_column(String(40), nullable=False)
@@ -279,6 +285,7 @@ class ScrapeRun(TimestampMixin, Base):
     started_at: Mapped[datetime] = mapped_column(DateTime(timezone=True), default=utcnow, nullable=False)
     finished_at: Mapped[datetime | None] = mapped_column(DateTime(timezone=True))
     duration_ms: Mapped[int | None] = mapped_column(Integer)
+    error_message: Mapped[str | None] = mapped_column(Text)
 
     source_runs: Mapped[list[ScrapeSourceRun]] = relationship(back_populates="scrape_run")
 

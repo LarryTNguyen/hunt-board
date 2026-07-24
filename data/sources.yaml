@@ -4,9 +4,11 @@ sources:
     ats: greenhouse
     company_name: Discord
     careers_url: https://discord.com/careers
-    company_logo_url: https://cdn.prod.website-files.com/6257adef93867e50d84d30e2/66e278299a53f5bf88615e90_Symbol.svg
+    company_logo_url: https://cdn.prod.website-files.com/6257adef93867e50d84d30e2/62fddf0fde45a8baedcc7ee5_847541504914fd33810e70a0ea73177e%20(2)-1.png
     enabled: true
     priority: 1
+    poll_interval_minutes: 1440
+    close_after_missed_runs: 12
     config:
       board_token: discord
 
@@ -15,9 +17,11 @@ sources:
     ats: lever
     company_name: HighLevel
     careers_url: https://www.gohighlevel.com/careers
-    company_logo_url: https://www.gohighlevel.com/favicon.ico
+    company_logo_url: 
     enabled: true
     priority: 1
+    poll_interval_minutes: 1440
+    close_after_missed_runs: 12
     config:
       site: gohighlevel
 
@@ -29,5 +33,7 @@ sources:
     company_logo_url: https://www.notion.so/images/favicon.ico
     enabled: true
     priority: 1
+    poll_interval_minutes: 1440
+    close_after_missed_runs: 12
     config:
       organization: notion

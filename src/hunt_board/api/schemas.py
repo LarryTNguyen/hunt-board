@@ -73,6 +73,30 @@ class JobPostingRead(BaseModel):
     application_status: ApplicationStatusRead | None = None
 
 
+class FacetEntryRead(BaseModel):
+    value: str
+    label: str
+    count: int
+
+
+class JobFeedFacetsRead(BaseModel):
+    ats: list[FacetEntryRead] = Field(default_factory=list)
+    sources: list[FacetEntryRead] = Field(default_factory=list)
+    countries: list[FacetEntryRead] = Field(default_factory=list)
+    workplace_types: list[FacetEntryRead] = Field(default_factory=list)
+    salary_known: list[FacetEntryRead] = Field(default_factory=list)
+
+
+class JobFeedRead(BaseModel):
+    items: list[JobPostingRead]
+    total: int
+    limit: int
+    offset: int
+    has_more: bool
+    generated_at: datetime
+    facets: JobFeedFacetsRead
+
+
 class JobSummaryRead(BaseModel):
     id: int
     source_slug: str
@@ -380,6 +404,7 @@ class ScrapeRunRead(BaseModel):
     started_at: datetime
     finished_at: datetime | None
     duration_ms: int | None
+    error_message: str | None
 
 
 class ScrapeSourceRunRead(BaseModel):
@@ -417,6 +442,8 @@ class SourceRead(BaseModel):
     careers_url: str | None
     enabled: bool
     priority: int
+    poll_interval_minutes: int | None
+    close_after_missed_runs: int
     categories: list[str]
     notes: str
     health_status: str
@@ -431,6 +458,54 @@ class SourceSyncRead(BaseModel):
     created: int
     updated: int
     disabled: int
+
+
+class OperationsIngestionRead(BaseModel):
+    run_in_progress: bool
+    last_run: ScrapeRunRead | None
+    last_successful_at: datetime | None
+    next_due_at: datetime | None
+
+
+class OperationsSourcesRead(BaseModel):
+    total: int
+    enabled: int
+    due: int
+    healthy: int
+    unhealthy: int
+    items: list[SourceRead]
+
+
+class OperationsJobsRead(BaseModel):
+    active: int
+    inactive: int
+    new_last_24_hours: int
+    updated_last_24_hours: int
+
+
+class OperationsRead(BaseModel):
+    generated_at: datetime
+    ingestion: OperationsIngestionRead
+    sources: OperationsSourcesRead
+    jobs: OperationsJobsRead
+    recent_runs: list[ScrapeRunRead]
+
+
+class IngestionHealthLastRunRead(BaseModel):
+    id: int
+    status: str
+    started_at: datetime
+    finished_at: datetime | None
+
+
+class IngestionHealthRead(BaseModel):
+    status: Literal["ok", "degraded", "stale"]
+    run_in_progress: bool
+    last_run: IngestionHealthLastRunRead | None
+    last_successful_at: datetime | None
+    due_sources: int
+    unhealthy_sources: int
+    stale_running_runs: int
 
 
 class DuplicateJobSummary(BaseModel):

@@ -1,0 +1,48 @@
+<!doctype html>
+<html lang="en">
+<head>
+  <meta charset="utf-8">
+  <meta name="viewport" content="width=device-width,initial-scale=1">
+  <title>Operations — Hunt Board</title>
+  <link rel="stylesheet" href="/app/assets/app.css?v=20260722-4">
+  <script type="module" src="/app/assets/pages/operations.js?v=20260722-4"></script>
+</head>
+<body>
+  <div data-app-nav="operations"></div>
+  <main class="page-main" id="main-content">
+    <div class="admin-banner">
+      <div class="page-shell">
+        <header class="page-intro">
+          <div><p class="coordinate">Operations / Ingestion control ledger</p><h1>Keep the route moving</h1><p>Inspect source health, review recent runs, and operate due-source refreshes without leaving the live desk.</p></div>
+          <span class="preview-label">Owner controls</span>
+        </header>
+      </div>
+    </div>
+    <div class="page-shell operations-shell">
+      <section aria-labelledby="system-status-title">
+        <div class="section-heading"><div><p class="utility-label">Current field conditions</p><h2 id="system-status-title">System status</h2></div><button class="button button-quiet" type="button" data-refresh data-operation-action>Refresh status</button></div>
+        <div class="operations-status-grid" data-system-status aria-live="polite" aria-busy="true"></div>
+      </section>
+
+      <section class="operations-actions" aria-labelledby="global-actions-title">
+        <div><p class="utility-label">Global actions</p><h2 id="global-actions-title">Run control</h2><p>Due-source actions respect source cadence and the global ingestion lock.</p></div>
+        <div class="action-row"><button class="button" type="button" data-run-dry data-operation-action>Dry run due sources</button><button class="button button-primary" type="button" data-run-real data-operation-action>Run due sources</button><button class="button button-dark" type="button" data-sync data-operation-action>Sync YAML sources</button></div>
+        <p class="operation-message" data-operation-message role="status" aria-live="polite"></p>
+      </section>
+
+      <section aria-labelledby="source-board-title">
+        <div class="section-heading"><div><p class="utility-label">Configured boards</p><h2 id="source-board-title">Source board</h2></div><span class="results-note" data-source-count></span></div>
+        <div class="source-board" data-source-board aria-live="polite" aria-busy="true"></div>
+      </section>
+
+      <section aria-labelledby="recent-runs-title">
+        <div class="section-heading"><div><p class="utility-label">Observation history</p><h2 id="recent-runs-title">Recent runs</h2></div></div>
+        <div class="run-ledger-layout">
+          <div class="run-list" data-run-list aria-live="polite" aria-busy="true"></div>
+          <div class="run-detail" data-run-detail aria-live="polite"><p>Select a run to inspect its source metrics.</p></div>
+        </div>
+      </section>
+    </div>
+  </main>
+</body>
+</html>

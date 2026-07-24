@@ -4,14 +4,14 @@ An ingestion run follows these stages:
 
 1. Load and validate `data/sources.yaml`. Both the milestone field names (`ats_type`, `ats_slug`, and high/medium/low priority) and the original project field names remain accepted.
 2. Select an explicitly requested source, or all enabled sources whose `next_due_at` has passed.
-3. Create `scrape_runs` and per-source `scrape_source_runs` records for a real run. Dry runs create no records.
-4. Fetch through the shared adapter interface with a global concurrency bound. Requests use configurable timeouts and retry transient network, timeout, rate-limit, and server failures with exponential backoff.
-5. Normalize ATS fields into `NormalizedJob`, including posting/apply URLs, HTML/plain descriptions, timestamps, and raw JSON.
+3. For a real run, atomically acquire the ingestion lock, recover stale run records, and create `scrape_runs`. Dry runs take no lock and create no records.
+4. Fetch through adapters registered in the central adapter registry with a global concurrency bound. Requests use configurable timeouts and retry transient network, timeout, rate-limit, and server failures with exponential backoff.
+5. Normalize ATS fields into `NormalizedJob`, sanitize external HTML with a conservative allowlist, derive safe plain text, and retain the unchanged original payload in `raw_json`.
 6. Apply title-only include, role-group, exclude, level, freshness, location/work-type, and source-priority scoring.
 7. Deduplicate in layers: source plus external ID, canonical apply URL, then the uncertain company/title/location signal. Uncertain matches remain separate and create an open duplicate review.
 8. Compare normalized fields for a stable-identity match. Insert new jobs, update materially changed jobs, and count unchanged jobs without rerunning version, match, duplicate-review, or notification writes. Unchanged jobs update only observation metadata such as `last_seen_at`. A changed description hash creates a `job_versions` row, raw JSON receives a 60-day retention timestamp, and the user's `job_matches` row is refreshed.
-9. Reset the miss counter for observed postings. Unseen postings increment their counter and become inactive only after 12 consecutive successful source runs. Reappearing inactive postings are reactivated and stamped as reposted.
-10. Finalize source health/due state and aggregate fetched, inserted, updated, unchanged, closed, duplicate, error, and duration metrics.
+9. Reset the miss counter for observed postings. Unseen postings increment their counter and become inactive only after the source's effective `close_after_missed_runs` successful observations. Reappearing inactive postings are reactivated and stamped as reposted. Failed scans never advance misses.
+10. Finalize source health/due state using its effective `poll_interval_minutes` and aggregate fetched, inserted, updated, unchanged, closed, duplicate, error, and duration metrics. Unexpected failures finalize the run as `failed`; startup recovery marks stale rows `abandoned`.
 
 Dry-run mode executes fetch, normalization, database-aware dedupe checks, and ranking but does not mutate sources, jobs, matches, reviews, or scrape metrics.
 
@@ -27,6 +27,8 @@ sources:
     name: Example Greenhouse
     ats: greenhouse
     company_name: Example Company
+    poll_interval_minutes: 60
+    close_after_missed_runs: 12
     config:
       board_token: company-board-token
 
@@ -46,6 +48,8 @@ sources:
 ```
 
 The repository’s default registry contains one public example for each supported ATS. Tests never call those boards; they use `tests/fixtures/*.json` and adapter overrides.
+
+Both policy fields are optional. Omitted closure policy defaults to 12 successful misses. Omitted cadence preserves the prior priority mapping exactly: priority 5 is 360 minutes, priority 3-4 is 720 minutes, and priority 0-2 is 1440 minutes. Effective values are persisted on `sources` and returned by the admin API.
 
 ## Incremental identity and change detection
 
@@ -72,9 +76,21 @@ Validate all due sources without writes, run all due sources, or force one sourc
 uv run hunt-board ingest --dry-run
 uv run hunt-board ingest
 uv run hunt-board ingest --source discord
+uv run hunt-board purge-expired-raw --dry-run
+uv run hunt-board purge-expired-raw
 ```
 
 The CLI prints a JSON summary with per-source and aggregate fetched, inserted, updated, unchanged, closed, duplicate, error, and duration values. The same operations are available at `POST /admin/ingestion/run` and `POST /admin/ingestion/run-source/{source_id}`. Historical data is available from `GET /admin/scrape-runs` and `GET /admin/scrape-runs/{run_id}/sources`.
+
+`GET /health/ingestion` returns `ok`, `degraded`, or `stale` plus aggregate run/source state. A degraded body still returns HTTP 200. The endpoint never exposes source configuration or raw payloads.
+
+## Scheduled runs
+
+`uv run hunt-board ingest` remains the canonical one-shot unit of work. Without an explicit source it selects only enabled due sources inside `IngestionService`; when none are due it exits successfully without creating an empty run record. Platform cron should invoke this command directly when available.
+
+`uv run hunt-board scheduler` provides a lightweight separate-process loop for local Docker and simple single-host deployments. It optionally runs one tick at startup, then calls the same one-shot service at `HUNT_BOARD_SCHEDULER_INTERVAL_SECONDS`. It does not maintain alternate due-time state or launch per-source tasks. Advisory-lock contention is logged as a skipped tick, source/run failures do not terminate the loop, and SIGINT/SIGTERM request a clean exit.
+
+The Compose `scheduler` profile waits for the backend readiness check, leaving Alembic migration and idempotent seed ownership with the backend container. Only one scheduler replica is intended; the global lock still protects concurrent API, CLI, cron, and scheduler triggers.
 
 ## Environment variables
 
@@ -84,5 +100,9 @@ The CLI prints a JSON summary with per-source and aggregate fetched, inserted, u
 - `HUNT_BOARD_SOURCE_CONCURRENCY` (default `5`)
 - `HUNT_BOARD_HTTP_MAX_RETRIES` (default `2`)
 - `HUNT_BOARD_HTTP_RETRY_BACKOFF_SECONDS` (default `0.5`)
+- `HUNT_BOARD_STALE_RUN_MINUTES` (default `120`, minimum `5`)
+- `HUNT_BOARD_SCHEDULER_ENABLED` (default `true`)
+- `HUNT_BOARD_SCHEDULER_INTERVAL_SECONDS` (default `300`, minimum `10`)
+- `HUNT_BOARD_SCHEDULER_RUN_ON_STARTUP` (default `true`)
 
 This project uses PostgreSQL and Alembic, not Supabase. Schema changes are applied with `uv run alembic upgrade head`.

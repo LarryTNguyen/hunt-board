@@ -15,6 +15,22 @@ class Settings:
     source_concurrency: int
     http_max_retries: int
     http_retry_backoff_seconds: float
+    stale_run_minutes: int
+    scheduler_interval_seconds: int
+    scheduler_run_on_startup: bool
+    scheduler_enabled: bool
+
+
+def _environment_bool(name: str, default: bool) -> bool:
+    raw = os.environ.get(name)
+    if raw is None:
+        return default
+    normalized = raw.strip().casefold()
+    if normalized in {"1", "true", "yes", "on"}:
+        return True
+    if normalized in {"0", "false", "no", "off"}:
+        return False
+    raise ValueError(f"{name} must be true or false")
 
 
 @lru_cache(maxsize=1)
@@ -33,4 +49,11 @@ def get_settings() -> Settings:
             0,
             float(os.environ.get("HUNT_BOARD_HTTP_RETRY_BACKOFF_SECONDS", "0.5")),
         ),
+        stale_run_minutes=max(5, int(os.environ.get("HUNT_BOARD_STALE_RUN_MINUTES", "120"))),
+        scheduler_interval_seconds=max(
+            10,
+            int(os.environ.get("HUNT_BOARD_SCHEDULER_INTERVAL_SECONDS", "300")),
+        ),
+        scheduler_run_on_startup=_environment_bool("HUNT_BOARD_SCHEDULER_RUN_ON_STARTUP", True),
+        scheduler_enabled=_environment_bool("HUNT_BOARD_SCHEDULER_ENABLED", True),
     )
