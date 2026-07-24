@@ -1,3 +1,16 @@
+x-app-environment: &app-environment
+  DATABASE_URL: postgresql+psycopg://hunt_board:hunt_board@postgres:5432/hunt_board
+  HUNT_BOARD_SOURCES_PATH: data/sources.yaml
+  HUNT_BOARD_DEFAULT_USER_EMAIL: ${HUNT_BOARD_DEFAULT_USER_EMAIL:-owner@example.com}
+  HUNT_BOARD_HTTP_TIMEOUT_SECONDS: ${HUNT_BOARD_HTTP_TIMEOUT_SECONDS:-20}
+  HUNT_BOARD_SOURCE_CONCURRENCY: ${HUNT_BOARD_SOURCE_CONCURRENCY:-5}
+  HUNT_BOARD_HTTP_MAX_RETRIES: ${HUNT_BOARD_HTTP_MAX_RETRIES:-2}
+  HUNT_BOARD_HTTP_RETRY_BACKOFF_SECONDS: ${HUNT_BOARD_HTTP_RETRY_BACKOFF_SECONDS:-0.5}
+  HUNT_BOARD_STALE_RUN_MINUTES: ${HUNT_BOARD_STALE_RUN_MINUTES:-120}
+  HUNT_BOARD_SCHEDULER_ENABLED: ${HUNT_BOARD_SCHEDULER_ENABLED:-true}
+  HUNT_BOARD_SCHEDULER_INTERVAL_SECONDS: ${HUNT_BOARD_SCHEDULER_INTERVAL_SECONDS:-300}
+  HUNT_BOARD_SCHEDULER_RUN_ON_STARTUP: ${HUNT_BOARD_SCHEDULER_RUN_ON_STARTUP:-true}
+
 services:
   postgres:
     image: postgres:16
@@ -17,11 +30,7 @@ services:
 
   backend:
     build: .
-    environment:
-      DATABASE_URL: postgresql+psycopg://hunt_board:hunt_board@postgres:5432/hunt_board
-      HUNT_BOARD_SOURCES_PATH: data/sources.yaml
-      HUNT_BOARD_DEFAULT_USER_EMAIL: ${HUNT_BOARD_DEFAULT_USER_EMAIL:-owner@example.com}
-      HUNT_BOARD_HTTP_TIMEOUT_SECONDS: ${HUNT_BOARD_HTTP_TIMEOUT_SECONDS:-20}
+    environment: *app-environment
     command:
       - sh
       - -c
@@ -31,6 +40,23 @@ services:
     depends_on:
       postgres:
         condition: service_healthy
+    healthcheck:
+      test: ["CMD", "python", "-c", "import urllib.request; urllib.request.urlopen('http://127.0.0.1:8000/health/ready', timeout=3)"]
+      interval: 10s
+      timeout: 5s
+      retries: 12
+
+  scheduler:
+    profiles: ["scheduler"]
+    build: .
+    environment: *app-environment
+    command: ["hunt-board", "scheduler"]
+    depends_on:
+      postgres:
+        condition: service_healthy
+      backend:
+        condition: service_healthy
+    restart: unless-stopped
 
 volumes:
   postgres_data:

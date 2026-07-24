@@ -33,6 +33,7 @@ export async function request(path, options = {}) {
 
 export const api = {
   jobs: (params = {}) => request(`/jobs?${new URLSearchParams(Object.entries(params).filter(([, value]) => value !== '' && value !== undefined && value !== null))}`),
+  discoveryFeed: (params = {}) => request(`/jobs/feed?${new URLSearchParams(Object.entries(params).filter(([, value]) => value !== '' && value !== undefined && value !== null))}`),
   job: (id) => request(`/jobs/${id}`),
   saveJob: (id, notes) => request(`/jobs/${id}/save`, { method: 'POST', body: notes === undefined ? {} : { notes } }),
   unsaveJob: (id) => request(`/jobs/${id}/save`, { method: 'DELETE' }),
@@ -57,4 +58,10 @@ export const api = {
   rescore: () => request('/me/preferences/rescore', { method: 'POST', body: {} }),
   duplicates: (status = 'open') => request(`/admin/duplicates?status=${encodeURIComponent(status)}`),
   updateDuplicate: (id, body) => request(`/admin/duplicates/${id}`, { method: 'PATCH', body }),
+  ingestionHealth: () => request('/health/ingestion'),
+  operations: () => request('/admin/operations'),
+  scrapeRunSources: (id) => request(`/admin/scrape-runs/${id}/sources`),
+  runDueSources: (dryRun = false) => request('/admin/ingestion/run', { method: 'POST', body: { dry_run: dryRun } }),
+  runSource: (id, dryRun = false) => request(`/admin/ingestion/run-source/${id}?dry_run=${dryRun}`, { method: 'POST', body: {} }),
+  syncSources: () => request('/admin/sources/sync-from-yaml', { method: 'POST', body: {} }),
 };

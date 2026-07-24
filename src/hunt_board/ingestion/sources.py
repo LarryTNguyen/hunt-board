@@ -1,24 +1,25 @@
 from __future__ import annotations
 
 from pathlib import Path
-from typing import Any, Literal
+from typing import Any
 
 import yaml
 from pydantic import BaseModel, Field, field_validator, model_validator
 
-
-ATSName = Literal["greenhouse", "lever", "ashby"]
+from hunt_board.ingestion.adapters.registry import registered_adapter_keys
 
 
 class SourceConfig(BaseModel):
     slug: str
     name: str
-    ats: ATSName
+    ats: str
     company_name: str
     company_logo_url: str | None = None
     careers_url: str | None = None
     enabled: bool = True
     priority: int = 0
+    poll_interval_minutes: int | None = Field(default=None, ge=1, le=10_080)
+    close_after_missed_runs: int = Field(default=12, ge=1, le=365)
     categories: list[str] = Field(default_factory=list)
     notes: str = ""
     config: dict[str, Any] = Field(default_factory=dict)
@@ -57,6 +58,23 @@ class SourceConfig(BaseModel):
         if not 0 <= parsed <= 5:
             raise ValueError("priority must be between 0 and 5")
         return parsed
+
+    @field_validator("ats")
+    @classmethod
+    def validate_registered_adapter(cls, value: str) -> str:
+        normalized = value.strip().casefold()
+        supported = registered_adapter_keys()
+        if normalized not in supported:
+            raise ValueError(
+                f"unsupported ATS adapter '{value}'; registered adapters: {', '.join(sorted(supported))}"
+            )
+        return normalized
+
+    @property
+    def effective_poll_interval_minutes(self) -> int:
+        if self.poll_interval_minutes is not None:
+            return self.poll_interval_minutes
+        return 360 if self.priority >= 5 else 720 if self.priority >= 3 else 1_440
 
 
 class SourceFile(BaseModel):

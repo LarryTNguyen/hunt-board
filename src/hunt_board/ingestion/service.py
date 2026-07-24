@@ -2,7 +2,8 @@ from __future__ import annotations
 
 import asyncio
 import hashlib
-from dataclasses import dataclass, field
+import logging
+from dataclasses import dataclass, field, replace
 from datetime import datetime, timedelta, timezone
 from time import perf_counter
 
@@ -24,19 +25,20 @@ from hunt_board.db.models import (
     User,
     UserPreference,
 )
-from hunt_board.ingestion.adapters import AshbyAdapter, ATSAdapter, GreenhouseAdapter, LeverAdapter, NormalizedJob
+from hunt_board.ingestion.adapters import ATSAdapter, NormalizedJob, create_adapter
+from hunt_board.ingestion.lock import (
+    IngestionAlreadyRunningError,
+    IngestionRunLock,
+    ingestion_lock_for,
+)
+from hunt_board.ingestion.sanitizer import sanitized_description
 from hunt_board.ingestion.sources import SourceConfig, load_sources, select_sources
 from hunt_board.jobs.dedupe import DedupeDecision, canonicalize_url, decide_dedupe, normalize_text
 from hunt_board.matching.ranking import RankingResult, UserPreferences, rank_job
 
 
-ADAPTERS = {
-    "greenhouse": GreenhouseAdapter,
-    "lever": LeverAdapter,
-    "ashby": AshbyAdapter,
-}
-CLOSE_AFTER_MISSED_RUNS = 12
 RAW_JSON_RETENTION_DAYS = 60
+logger = logging.getLogger(__name__)
 
 
 @dataclass
@@ -91,6 +93,8 @@ class IngestionService:
         max_retries: int = 2,
         retry_backoff_seconds: float = 0.5,
         adapter_overrides: dict[str, ATSAdapter] | None = None,
+        run_lock: IngestionRunLock | None = None,
+        stale_run_minutes: int = 120,
     ) -> None:
         self.sources_path = sources_path
         self.timeout_seconds = timeout_seconds
@@ -98,6 +102,8 @@ class IngestionService:
         self.max_retries = max(0, max_retries)
         self.retry_backoff_seconds = max(0, retry_backoff_seconds)
         self.adapter_overrides = adapter_overrides or {}
+        self.run_lock = run_lock
+        self.stale_run_minutes = max(5, stale_run_minutes)
 
     async def run(
         self,
@@ -115,8 +121,22 @@ class IngestionService:
             dry_run=dry_run,
             sources_requested=[source.slug for source in source_configs],
         )
+        if not source_configs:
+            summary.status = "completed"
+            summary.duration_ms = round((perf_counter() - started) * 1000)
+            logger.info("Ingestion finished without a run because no sources are due")
+            return summary
         scrape_run: ScrapeRun | None = None
-        if not dry_run:
+        run_lock: IngestionRunLock | None = None
+        if dry_run:
+            return await self._execute_run(db, source_configs, summary, None, started)
+
+        run_lock = self.run_lock or ingestion_lock_for(db)
+        if not run_lock.acquire(db):
+            logger.warning("Ingestion run rejected because another real run holds the lock")
+            raise IngestionAlreadyRunningError("Another ingestion run is already in progress")
+        try:
+            self._recover_stale_runs(db)
             scrape_run = ScrapeRun(
                 status="running",
                 dry_run=False,
@@ -124,9 +144,25 @@ class IngestionService:
                 sources_requested=summary.sources_requested,
             )
             db.add(scrape_run)
-            db.flush()
+            db.commit()
             summary.scrape_run_id = scrape_run.id
+            logger.info("Ingestion run %s started", scrape_run.id)
+            try:
+                return await self._execute_run(db, source_configs, summary, scrape_run, started)
+            except BaseException as exc:
+                self._finalize_unexpected_failure(db, scrape_run.id, exc, started)
+                raise
+        finally:
+            run_lock.release()
 
+    async def _execute_run(
+        self,
+        db: Session,
+        source_configs: list[SourceConfig],
+        summary: IngestionSummary,
+        scrape_run: ScrapeRun | None,
+        started: float,
+    ) -> IngestionSummary:
         limits = httpx.Limits(max_connections=self.source_concurrency, max_keepalive_connections=self.source_concurrency)
         async with httpx.AsyncClient(timeout=self.timeout_seconds, limits=limits) as client:
             semaphore = asyncio.Semaphore(self.source_concurrency)
@@ -134,7 +170,7 @@ class IngestionService:
                 *(self._fetch_source(source, client, semaphore) for source in source_configs)
             )
             for fetch_result in fetch_results:
-                source_summary = self._process_source(db, fetch_result, scrape_run, dry_run)
+                source_summary = self._process_source(db, fetch_result, scrape_run, summary.dry_run)
                 summary.source_runs.append(source_summary)
                 summary.total_fetched += source_summary.fetched_count
                 summary.total_upserted += source_summary.upserted_count
@@ -169,7 +205,91 @@ class IngestionService:
             scrape_run.finished_at = datetime.now(timezone.utc)
             scrape_run.duration_ms = summary.duration_ms
             db.commit()
+            logger.info("Ingestion run %s finished with status %s", scrape_run.id, summary.status)
         return summary
+
+    def _recover_stale_runs(self, db: Session) -> int:
+        now = datetime.now(timezone.utc)
+        cutoff = now - timedelta(minutes=self.stale_run_minutes)
+        stale_runs = list(
+            db.scalars(
+                select(ScrapeRun).where(
+                    ScrapeRun.status == "running",
+                    ScrapeRun.started_at < cutoff,
+                )
+            ).all()
+        )
+        for run in stale_runs:
+            reason = f"Abandoned during startup recovery after exceeding {self.stale_run_minutes} minutes"
+            run.status = "abandoned"
+            run.error_message = reason
+            run.finished_at = now
+            run.duration_ms = self._duration_since(run.started_at, now)
+            source_runs = db.scalars(
+                select(ScrapeSourceRun).where(
+                    ScrapeSourceRun.scrape_run_id == run.id,
+                    ScrapeSourceRun.status == "running",
+                )
+            ).all()
+            for source_run in source_runs:
+                source_run.status = "abandoned"
+                source_run.error_message = reason
+                source_run.finished_at = now
+                source_run.duration_ms = self._duration_since(source_run.started_at, now)
+            logger.warning("Recovered stale ingestion run %s as abandoned", run.id)
+        stale_source_runs = db.scalars(
+            select(ScrapeSourceRun).where(
+                ScrapeSourceRun.status == "running",
+                ScrapeSourceRun.started_at < cutoff,
+            )
+        ).all()
+        for source_run in stale_source_runs:
+            reason = f"Abandoned during startup recovery after exceeding {self.stale_run_minutes} minutes"
+            source_run.status = "abandoned"
+            source_run.error_message = reason
+            source_run.finished_at = now
+            source_run.duration_ms = self._duration_since(source_run.started_at, now)
+        return len(stale_runs)
+
+    @staticmethod
+    def _duration_since(started_at: datetime, finished_at: datetime) -> int:
+        if started_at.tzinfo is None:
+            started_at = started_at.replace(tzinfo=timezone.utc)
+        return max(0, round((finished_at - started_at).total_seconds() * 1000))
+
+    def _finalize_unexpected_failure(
+        self,
+        db: Session,
+        scrape_run_id: int,
+        exc: BaseException,
+        started: float,
+    ) -> None:
+        db.rollback()
+        run = db.get(ScrapeRun, scrape_run_id)
+        if run is None:
+            return
+        finished_at = datetime.now(timezone.utc)
+        message = f"{type(exc).__name__}: {exc}"[:4000]
+        run.status = "failed"
+        run.error_message = message
+        run.finished_at = finished_at
+        run.duration_ms = round((perf_counter() - started) * 1000)
+        for source_run in db.scalars(
+            select(ScrapeSourceRun).where(
+                ScrapeSourceRun.scrape_run_id == scrape_run_id,
+                ScrapeSourceRun.status == "running",
+            )
+        ).all():
+            source_run.status = "failed"
+            source_run.error_message = message
+            source_run.finished_at = finished_at
+            source_run.duration_ms = self._duration_since(source_run.started_at, finished_at)
+        db.commit()
+        logger.error(
+            "Ingestion run %s failed unexpectedly",
+            scrape_run_id,
+            exc_info=(type(exc), exc, exc.__traceback__),
+        )
 
     async def _fetch_source(
         self,
@@ -178,10 +298,12 @@ class IngestionService:
         semaphore: asyncio.Semaphore,
     ) -> _SourceFetchResult:
         started_at = datetime.now(timezone.utc)
+        logger.info("Ingestion source %s started", source_config.slug)
         try:
             async with semaphore:
                 adapter = self._adapter_for(source_config, client)
                 jobs = await adapter.fetch_jobs(source_config)
+                jobs = [self._sanitize_job(job) for job in jobs]
             return _SourceFetchResult(
                 source=source_config,
                 started_at=started_at,
@@ -267,14 +389,19 @@ class IngestionService:
                     if outcome != "unchanged":
                         source_summary.upserted_count += 1
                 if not dry_run and source_row:
-                    source_summary.closed_count = self._mark_closed(db, source_row, seen_external_ids)
+                    source_summary.closed_count = self._mark_closed(
+                        db,
+                        source_row,
+                        seen_external_ids,
+                        source_config.close_after_missed_runs,
+                    )
             source_summary.status = "completed"
             if source_row and not dry_run:
                 source_row.health_status = "healthy"
                 source_row.consecutive_failures = 0
                 source_row.last_successful_at = datetime.now(timezone.utc)
                 source_row.last_error = None
-                source_row.next_due_at = self._next_due(source_config.priority)
+                source_row.next_due_at = self._next_due(source_config.effective_poll_interval_minutes)
         except Exception as exc:  # adapters isolate one source failure from the rest of the run
             source_summary.status = "failed"
             source_summary.upserted_count = 0
@@ -289,6 +416,12 @@ class IngestionService:
                 source_row.consecutive_failures += 1
                 source_row.last_error = source_summary.error_message
                 source_row.next_due_at = datetime.now(timezone.utc) + timedelta(hours=24)
+            logger.warning(
+                "Ingestion source %s failed in run %s: %s",
+                source_config.slug,
+                scrape_run.id if scrape_run else "dry-run",
+                source_summary.error_message,
+            )
 
         finished_at = datetime.now(timezone.utc)
         if source_row and not dry_run:
@@ -313,13 +446,19 @@ class IngestionService:
             source_run.finished_at = finished_at
             source_run.duration_ms = source_summary.duration_ms
             db.flush()
+        logger.info(
+            "Ingestion source %s finished with status %s",
+            source_config.slug,
+            source_summary.status,
+        )
         return source_summary
 
     def _adapter_for(self, source_config: SourceConfig, client: httpx.AsyncClient) -> ATSAdapter:
         override = self.adapter_overrides.get(source_config.slug)
         if override:
             return override
-        return ADAPTERS[source_config.ats](
+        return create_adapter(
+            source_config.ats,
             client,
             max_retries=self.max_retries,
             retry_backoff_seconds=self.retry_backoff_seconds,
@@ -348,6 +487,8 @@ class IngestionService:
         source.careers_url = config.careers_url
         source.enabled = config.enabled
         source.priority = config.priority
+        source.poll_interval_minutes = config.effective_poll_interval_minutes
+        source.close_after_missed_runs = config.close_after_missed_runs
         source.categories = config.categories
         source.notes = config.notes
         source.config_json = config.config
@@ -664,7 +805,12 @@ class IngestionService:
         match.reasons = ranking.reasons
 
     @staticmethod
-    def _mark_closed(db: Session, source: Source, seen_external_ids: set[str]) -> int:
+    def _mark_closed(
+        db: Session,
+        source: Source,
+        seen_external_ids: set[str],
+        close_after_missed_runs: int,
+    ) -> int:
         active_jobs = db.scalars(
             select(JobPosting).where(JobPosting.source_id == source.id, JobPosting.active.is_(True))
         ).all()
@@ -675,7 +821,7 @@ class IngestionService:
                 job.consecutive_missed_runs = 0
                 continue
             job.consecutive_missed_runs += 1
-            if job.consecutive_missed_runs >= CLOSE_AFTER_MISSED_RUNS:
+            if job.consecutive_missed_runs >= close_after_missed_runs:
                 job.active = False
                 job.closed_at = now
                 closed_count += 1
@@ -692,9 +838,20 @@ class IngestionService:
         return location
 
     @staticmethod
-    def _next_due(priority: int) -> datetime:
-        hours = 6 if priority >= 5 else 12 if priority >= 3 else 24
-        return datetime.now(timezone.utc) + timedelta(hours=hours)
+    def _next_due(poll_interval_minutes: int) -> datetime:
+        return datetime.now(timezone.utc) + timedelta(minutes=poll_interval_minutes)
+
+    @staticmethod
+    def _sanitize_job(job: NormalizedJob) -> NormalizedJob:
+        description_html, description_text = sanitized_description(
+            job.description_html,
+            job.description_text,
+        )
+        return replace(
+            job,
+            description_html=description_html,
+            description_text=description_text,
+        )
 
     @staticmethod
     def _is_due(db: Session, config: SourceConfig) -> bool:

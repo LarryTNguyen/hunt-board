@@ -6,6 +6,7 @@ const navItems = [
   ['tracker', 'Tracker', '/app/application-tracker.html'],
   ['notifications', 'Inbox', '/app/notifications.html'],
   ['preferences', 'Preferences', '/app/preferences.html'],
+  ['operations', 'Operations', '/app/operations.html'],
   ['admin', 'Review', '/app/duplicate-review.html'],
 ];
 

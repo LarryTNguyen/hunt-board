@@ -5,35 +5,18 @@ import re
 from dataclasses import dataclass
 from datetime import datetime, timezone
 from decimal import Decimal, InvalidOperation
-from html.parser import HTMLParser
-from typing import Any, Protocol
+from typing import TYPE_CHECKING, Any, Protocol
 
 import httpx
 
-from hunt_board.ingestion.sources import SourceConfig
+from hunt_board.ingestion.sanitizer import html_to_text
+
+if TYPE_CHECKING:
+    from hunt_board.ingestion.sources import SourceConfig
 
 
 class AdapterError(RuntimeError):
     pass
-
-
-class _TextExtractor(HTMLParser):
-    def __init__(self) -> None:
-        super().__init__()
-        self.parts: list[str] = []
-
-    def handle_data(self, data: str) -> None:
-        text = data.strip()
-        if text:
-            self.parts.append(text)
-
-
-def html_to_text(html: str | None) -> str | None:
-    if not html:
-        return None
-    parser = _TextExtractor()
-    parser.feed(html)
-    return re.sub(r"\s+", " ", " ".join(parser.parts)).strip() or None
 
 
 def parse_datetime(value: Any) -> datetime | None:

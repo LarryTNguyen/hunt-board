@@ -4,8 +4,8 @@
   <meta charset="utf-8">
   <meta name="viewport" content="width=device-width,initial-scale=1">
   <title>Discover — Hunt Board</title>
-  <link rel="stylesheet" href="/app/assets/app.css?v=20260721-2">
-  <script type="module" src="/app/assets/pages/discovery.js?v=20260721-2"></script>
+  <link rel="stylesheet" href="/app/assets/app.css?v=20260722-4">
+  <script type="module" src="/app/assets/pages/discovery.js?v=20260722-4"></script>
 </head>
 <body>
   <div data-app-nav="discover"></div>
@@ -15,21 +15,41 @@
         <div>
           <p class="coordinate">Daily route / Live sightings ledger</p>
           <h1>Plot today’s route</h1>
-          <p>Active listings arrive ranked and deduplicated. Open any row for the observation sheet.</p>
+          <p>Browse the complete ranked feed, narrow the terrain, and keep your exact route in the address bar.</p>
         </div>
-        <span class="preview-label">Live API records</span>
+        <span class="preview-label">Self-refreshing feed</span>
       </header>
-      <section aria-label="Job discovery controls">
-        <div class="toolbar">
-          <label class="search-field"><span class="sr-only">Search jobs</span><input type="search" data-search placeholder="Search title, company, or description"></label>
-          <select class="select-field" data-location aria-label="Filter by location"><option value="">All locations</option><option value="remote">Remote only</option></select>
-          <select class="select-field" data-country aria-label="Filter by country"><option value="">All countries</option></select>
-          <select class="select-field" data-sort aria-label="Sort jobs"><option value="ranking_score:desc">Best match</option><option value="posted_at:desc">Newest posted</option><option value="first_seen_at:desc">Recently seen</option><option value="company_name:asc">Company A–Z</option><option value="title:asc">Title A–Z</option></select>
-          <span class="results-note" data-count>Loading sightings…</span>
+
+      <section class="discovery-controls" aria-labelledby="route-controls-title">
+        <div class="feed-freshness" data-freshness role="status">Checking the latest field refresh…</div>
+        <h2 class="sr-only" id="route-controls-title">Job discovery controls</h2>
+        <form class="filter-board" data-filter-form>
+          <label class="control-field control-field-search"><span>Keywords</span><input type="search" data-search name="q" placeholder="Title, company, location, or description"></label>
+          <label class="control-field"><span>Source</span><select data-source name="source"><option value="">All sources</option></select></label>
+          <label class="control-field"><span>ATS</span><select data-ats name="ats"><option value="">All ATS platforms</option></select></label>
+          <label class="control-field"><span>Country</span><select data-country name="country"><option value="">All countries</option></select></label>
+          <label class="control-field"><span>Location contains</span><input type="text" data-location name="location" placeholder="City, state, or remote"></label>
+          <label class="control-field"><span>Work arrangement</span><select data-workplace name="workplace"><option value="">Any arrangement</option></select></label>
+          <label class="control-field"><span>Compensation</span><select data-salary name="salary"><option value="">Any salary detail</option><option value="known">Salary listed</option><option value="unknown">Salary not listed</option></select></label>
+          <label class="control-field"><span>Posting age</span><select data-posted name="posted"><option value="">Any posting age</option><option value="1">Past 24 hours</option><option value="3">Past 3 days</option><option value="7">Past week</option><option value="14">Past 2 weeks</option><option value="30">Past month</option><option value="90">Past 3 months</option></select></label>
+          <label class="control-field"><span>Minimum score</span><select data-score name="score"><option value="">Any score</option><option value="60">60+</option><option value="70">70+</option><option value="80">80+</option><option value="90">90+</option></select></label>
+          <label class="control-field"><span>Sort</span><select data-sort name="sort"><option value="ranking_score:desc">Best match</option><option value="relevance:desc">Search relevance</option><option value="posted_at:desc">Newest posted</option><option value="first_seen_at:desc">Recently discovered</option><option value="company_name:asc">Company A–Z</option><option value="title:asc">Title A–Z</option></select></label>
+          <button class="button button-quiet clear-route" type="button" data-clear>Clear all</button>
+        </form>
+        <div class="feed-command-row">
+          <div class="filter-tabs" data-tabs aria-label="Sighting views"><button class="filter-button" type="button" aria-pressed="true" data-tab="all">All</button><button class="filter-button" type="button" aria-pressed="false" data-tab="new">New</button><button class="filter-button" type="button" aria-pressed="false" data-tab="saved">Saved</button><button class="filter-button" type="button" aria-pressed="false" data-tab="top">Top matches</button><button class="filter-button" type="button" aria-pressed="false" data-tab="discarded">Discard pile</button></div>
+          <span class="results-note" data-count role="status" aria-live="polite">Loading sightings…</span>
         </div>
-        <div class="filter-tabs" data-tabs aria-label="Sighting filters"><button class="filter-button" aria-pressed="true" data-tab="all">All</button><button class="filter-button" aria-pressed="false" data-tab="new">New</button><button class="filter-button" aria-pressed="false" data-tab="saved">Saved</button><button class="filter-button" aria-pressed="false" data-tab="top">Top matches</button><button class="filter-button" aria-pressed="false" data-tab="discarded">Discard pile</button></div>
       </section>
-      <section data-results class="ledger-wrap" aria-live="polite"></section>
+
+      <section class="feed-region" aria-label="Job discovery results">
+        <div data-results class="ledger-wrap" aria-busy="true"></div>
+        <nav class="feed-pagination" data-pagination aria-label="Job result pages" hidden>
+          <button class="button button-quiet" type="button" data-previous>Previous</button>
+          <span data-page-summary>Page 1</span>
+          <button class="button button-quiet" type="button" data-next>Next</button>
+        </nav>
+      </section>
     </div>
   </main>
   <aside class="observation-drawer" data-drawer aria-hidden="true" aria-label="Selected job observation sheet"></aside>

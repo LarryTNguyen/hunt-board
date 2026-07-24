@@ -1,6 +1,6 @@
 from __future__ import annotations
 
-from typing import Any
+from typing import TYPE_CHECKING, Any
 
 from hunt_board.ingestion.adapters.base import (
     HttpATSAdapter,
@@ -10,14 +10,18 @@ from hunt_board.ingestion.adapters.base import (
     parse_datetime,
     salary_range,
 )
-from hunt_board.ingestion.sources import SourceConfig
+from hunt_board.ingestion.adapters.base import AdapterError
+from hunt_board.ingestion.sanitizer import sanitized_description
+
+if TYPE_CHECKING:
+    from hunt_board.ingestion.sources import SourceConfig
 
 
 class GreenhouseAdapter(HttpATSAdapter):
     async def fetch_jobs(self, source: SourceConfig) -> list[NormalizedJob]:
         token = source.config.get("board_token")
         if not token:
-            raise ValueError(f"Greenhouse source {source.slug} requires config.board_token")
+            raise AdapterError(f"Greenhouse source '{source.slug}' requires config.board_token")
         payload = await self.get_json(f"https://boards-api.greenhouse.io/v1/boards/{token}/jobs?content=true")
         jobs = payload.get("jobs", []) if isinstance(payload, dict) else payload
         return [self.normalize(source, job) for job in jobs]
@@ -27,6 +31,7 @@ class GreenhouseAdapter(HttpATSAdapter):
         departments = job.get("departments") or []
         offices = job.get("offices") or []
         description_html = job.get("content")
+        description_html, description_text = sanitized_description(description_html)
         location_name = location.get("name") or ", ".join(o.get("name", "") for o in offices if o.get("name")) or None
         office_locations = [office.get("location") for office in offices if office.get("location")]
         country_code, country_name = normalize_country(None, *office_locations, location_name)
@@ -49,7 +54,7 @@ class GreenhouseAdapter(HttpATSAdapter):
             posting_url=job.get("absolute_url"),
             apply_url=job.get("absolute_url"),
             description_html=description_html,
-            description_text=html_to_text(description_html),
+            description_text=description_text,
             raw_json=job,
             salary_min=salary_min,
             salary_max=salary_max,

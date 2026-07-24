@@ -1,6 +1,6 @@
 from __future__ import annotations
 
-from typing import Any
+from typing import TYPE_CHECKING, Any
 
 from hunt_board.ingestion.adapters.base import (
     HttpATSAdapter,
@@ -10,14 +10,18 @@ from hunt_board.ingestion.adapters.base import (
     parse_datetime,
     salary_range,
 )
-from hunt_board.ingestion.sources import SourceConfig
+from hunt_board.ingestion.adapters.base import AdapterError
+from hunt_board.ingestion.sanitizer import sanitized_description
+
+if TYPE_CHECKING:
+    from hunt_board.ingestion.sources import SourceConfig
 
 
 class AshbyAdapter(HttpATSAdapter):
     async def fetch_jobs(self, source: SourceConfig) -> list[NormalizedJob]:
         organization = source.config.get("organization")
         if not organization:
-            raise ValueError(f"Ashby source {source.slug} requires config.organization")
+            raise AdapterError(f"Ashby source '{source.slug}' requires config.organization")
         payload = await self.get_json(
             f"https://api.ashbyhq.com/posting-api/job-board/{organization}?includeCompensation=true"
         )
@@ -26,6 +30,9 @@ class AshbyAdapter(HttpATSAdapter):
 
     def normalize(self, source: SourceConfig, job: dict[str, Any]) -> NormalizedJob:
         description_html = job.get("descriptionHtml")
+        description_html, description_text = sanitized_description(
+            description_html, html_to_text(job.get("descriptionPlain"))
+        )
         location_value = job.get("location")
         department_value = job.get("department")
         location = job.get("locationName") or (
@@ -75,7 +82,7 @@ class AshbyAdapter(HttpATSAdapter):
             posting_url=job.get("jobUrl"),
             apply_url=job.get("applyUrl") or job.get("jobUrl"),
             description_html=description_html,
-            description_text=html_to_text(job.get("descriptionPlain")) or html_to_text(description_html),
+            description_text=description_text,
             raw_json=job,
             salary_min=salary_min,
             salary_max=salary_max,
