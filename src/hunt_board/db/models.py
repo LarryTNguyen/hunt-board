@@ -112,6 +112,7 @@ class JobPosting(TimestampMixin, Base):
     normalized_location: Mapped[str | None] = mapped_column(String(500))
     location_country_code: Mapped[str | None] = mapped_column(String(2))
     location_country: Mapped[str | None] = mapped_column(String(120))
+    locations_json: Mapped[list[dict[str, Any]]] = mapped_column(JSON, default=list, nullable=False)
     department: Mapped[str | None] = mapped_column(String(255))
     employment_type: Mapped[str | None] = mapped_column(String(120))
     workplace_type: Mapped[str | None] = mapped_column(String(120))

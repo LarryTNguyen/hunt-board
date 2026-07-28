@@ -22,7 +22,7 @@ from hunt_board.tracking.api import router as tracking_router
 
 
 def create_app() -> FastAPI:
-    app = FastAPI(title="Hunt Board", version="0.4.0")
+    app = FastAPI(title="Hunt Board", version="0.4.1")
 
     @app.middleware("http")
     async def prevent_stale_frontend_assets(request: Request, call_next):

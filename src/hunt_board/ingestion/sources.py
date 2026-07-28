@@ -70,6 +70,14 @@ class SourceConfig(BaseModel):
             )
         return normalized
 
+    @model_validator(mode="after")
+    def validate_adapter_specific_config(self) -> SourceConfig:
+        if self.ats == "workday":
+            from hunt_board.ingestion.adapters.workday import validate_workday_source
+
+            validate_workday_source(self.careers_url, self.config)
+        return self
+
     @property
     def effective_poll_interval_minutes(self) -> int:
         if self.poll_interval_minutes is not None:

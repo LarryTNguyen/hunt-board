@@ -4,9 +4,9 @@
 Hunt Board is a backend-first job intelligence system. The MVP is a single-user application that ingests jobs from curated ATS sources, stores normalized job records plus raw JSON, dedupes/repost-detects conservatively, ranks jobs against user preferences, exposes API endpoints, and records scrape run metrics.
 
 ## Current milestone
-Milestones 1-4 are implemented. Preserve their contracts and focus on the milestone explicitly requested by the user. Milestone 4 adds the server-paginated discovery feed, PostgreSQL full-text search, URL-driven discovery UI, separate scheduler process, aggregate operations API/page, and explicit liveness/readiness routes on top of the Milestone 3.5 ingestion-hardening bridge.
+Milestones 1-4 are implemented. Milestone 4.1 is the active focused source-expansion scope: production-quality ingestion from explicitly configured public Workday Candidate Experience JSON boards, with complete pagination, bounded detail concurrency, withdrawal reconciliation, structured locations, and the existing lifecycle safety boundary.
 
-Do not add Workday, browser automation, a scheduler inside FastAPI, task queues, external search infrastructure, multi-user authentication, resume analysis, or delivery notifications unless explicitly asked.
+Do not add authenticated Workday APIs, automatic board discovery, browser automation, a scheduler inside FastAPI, task queues, external search infrastructure, multi-user authentication, resume analysis, or delivery notifications unless explicitly asked.
 
 ## Tech stack rules
 - Backend: Python 3.12, FastAPI, SQLAlchemy 2.0, Alembic, PostgreSQL, Pydantic, httpx, pytest.
@@ -26,7 +26,7 @@ Do not add Workday, browser automation, a scheduler inside FastAPI, task queues,
 
 ## Ingestion rules
 - Adapter interface first; individual ATS adapters second.
-- Build adapters in this order: Greenhouse, Lever, Ashby.
+- Supported adapters are Greenhouse, Lever, Ashby, and the bounded public-JSON Workday adapter.
 - Use httpx with timeouts and clean error handling.
 - Tests must use fixture JSON, not live ATS calls.
 - Support dry-run ingestion that performs fetch/normalize/dedupe/ranking without DB writes.

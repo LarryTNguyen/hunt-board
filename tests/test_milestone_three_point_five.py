@@ -76,9 +76,15 @@ def job(*, external_id: str = "1", html: str = "<p>Build APIs.</p>") -> Normaliz
 
 
 def test_adapter_registry_is_source_of_truth_for_validation() -> None:
-    assert set(ADAPTER_REGISTRY) == {"greenhouse", "lever", "ashby"}
-    with pytest.raises(ValidationError, match="unsupported ATS adapter 'workday'"):
-        SourceConfig(slug="future", name="Future", ats="workday", company_name="Future")
+    assert set(ADAPTER_REGISTRY) == {"greenhouse", "lever", "ashby", "workday"}
+    with pytest.raises(ValidationError, match="config.host"):
+        SourceConfig(
+            slug="future",
+            name="Future",
+            ats="workday",
+            company_name="Future",
+            careers_url="https://future.invalid.myworkdayjobs.com/External",
+        )
 
 
 @pytest.mark.asyncio()

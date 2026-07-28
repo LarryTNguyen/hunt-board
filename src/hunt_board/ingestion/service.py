@@ -546,6 +546,7 @@ class IngestionService:
                 normalized_title=normalize_text(job.title) or "",
                 location=self._display_location(job),
                 normalized_location=normalize_text(self._display_location(job)),
+                locations_json=self._structured_locations(job),
                 raw_json=job.raw_json,
             )
             db.add(target)
@@ -565,6 +566,7 @@ class IngestionService:
         target.normalized_location = normalize_text(target.location)
         target.location_country_code = job.location_country_code
         target.location_country = job.location_country
+        target.locations_json = self._structured_locations(job)
         target.department = job.department
         target.employment_type = job.employment_type
         target.workplace_type = job.workplace_type
@@ -645,6 +647,7 @@ class IngestionService:
             (target.normalized_location, normalize_text(location)),
             (target.location_country_code, job.location_country_code),
             (target.location_country, job.location_country),
+            (target.locations_json, cls._structured_locations(job)),
             (target.department, job.department),
             (target.employment_type, job.employment_type),
             (target.workplace_type, job.workplace_type),
@@ -657,12 +660,20 @@ class IngestionService:
             (target.canonical_apply_url, canonicalize_url(job.apply_url)),
             (target.description_html, job.description_html),
             (target.description_text, job.description_text),
-            (target.posted_at, expected_posted_at),
-            (target.source_updated_at, job.updated_at),
+            (cls._comparable_datetime(target.posted_at), cls._comparable_datetime(expected_posted_at)),
+            (cls._comparable_datetime(target.source_updated_at), cls._comparable_datetime(job.updated_at)),
             (target.ranking_score, ranking.score),
             (target.ranking_reasons, ranking.reasons),
         )
         return not target.active or any(current != incoming for current, incoming in relevant_values)
+
+    @staticmethod
+    def _comparable_datetime(value: datetime | None) -> datetime | None:
+        if value is None:
+            return None
+        if value.tzinfo is None:
+            return value.replace(tzinfo=timezone.utc)
+        return value.astimezone(timezone.utc)
 
     @staticmethod
     def _record_version(db: Session, target: JobPosting, job: NormalizedJob) -> JobVersion | None:
@@ -836,6 +847,22 @@ class IngestionService:
         if "remote" in combined and not known_country:
             return "Remote - country unknown"
         return location
+
+    @classmethod
+    def _structured_locations(cls, job: NormalizedJob) -> list[dict[str, object]]:
+        if job.locations:
+            return job.locations
+        display = cls._display_location(job)
+        if not display:
+            return []
+        return [
+            {
+                "display": display,
+                "country_code": job.location_country_code,
+                "country": job.location_country,
+                "is_primary": True,
+            }
+        ]
 
     @staticmethod
     def _next_due(poll_interval_minutes: int) -> datetime:

@@ -68,6 +68,17 @@ function readState() {
   };
 }
 
+function locationSummary(job) {
+  const locations = Array.isArray(job.locations) ? job.locations.filter((item) => item?.display) : [];
+  if (!locations.length) return job.location || 'Location not listed';
+  return locations.length === 1 ? locations[0].display : `${locations[0].display} + ${locations.length - 1} more`;
+}
+
+function allLocations(job) {
+  const locations = Array.isArray(job.locations) ? job.locations.filter((item) => item?.display) : [];
+  return locations.length ? locations.map((item) => item.display).join(' / ') : (job.location || 'Not listed');
+}
+
 function feedSignature(state) {
   return JSON.stringify({ ...state, job: null });
 }
@@ -152,7 +163,7 @@ function renderRows() {
     row.setAttribute('aria-label', `Open ${job.title} at ${job.company_name}`);
     row.innerHTML = `<td><span class="status ${job.is_saved ? '' : 'status-new'}">${esc(currentState.tab === 'discarded' ? 'Hidden' : stateLabel(job))}</span></td>
       <td><span class="ledger-title">${esc(job.title)}</span><span class="ledger-submeta">${esc(job.department || job.employment_type || 'General')}</span></td>
-      <td><span class="company-lockup company-lockup-compact">${companyMark(job.company_name, job.company_logo_url)}<span>${esc(job.company_name)}</span></span></td><td>${esc(job.location || 'Location not listed')}</td>
+      <td><span class="company-lockup company-lockup-compact">${companyMark(job.company_name, job.company_logo_url)}<span>${esc(job.company_name)}</span></span></td><td>${esc(locationSummary(job))}</td>
       <td>${esc(country(job))}</td><td class="salary-cell">${esc(salary(job))}</td>
       <td><span class="source-tag">${esc(job.source?.ats || job.source_slug)}</span></td><td><span class="match-score">${score(job.ranking_score)}</span></td><td>${esc(relativeDate(job.first_seen_at))}</td>`;
     const open = () => openDrawer(job);
@@ -203,7 +214,7 @@ async function openDrawer(job, updateHistory = true) {
     <div class="action-row">${job.is_saved ? '<span class="tag">Saved</span>' : ''}${job.has_application ? `<span class="tag">${esc(job.application_status?.name || 'Tracked')}</span>` : ''}${job.is_reposted ? '<span class="tag">Reposted</span>' : ''}</div>
     <div class="drawer-score"><span><small class="utility-label">Route relevance</small><strong>${score(job.ranking_score)}</strong></span><small>out of 100</small></div>
     <div class="relevance-summary">${relevance.map((signal) => `<div><small>${esc(signal.label)}</small><strong>${esc(signal.value)}</strong></div>`).join('')}</div>
-    <dl class="meta-list"><div><dt>Location</dt><dd>${esc(job.location || 'Not listed')}</dd></div><div><dt>Country</dt><dd>${esc(country(job))}</dd></div><div><dt>Compensation</dt><dd>${esc(salary(job))}</dd></div><div><dt>Role level</dt><dd>${esc(roleLevel(job.title))}</dd></div><div><dt>Work arrangement</dt><dd>${esc(label(job.workplace_type, 'Not provided by source'))}</dd></div><div><dt>First seen</dt><dd>${esc(absoluteDate(job.first_seen_at))}</dd></div><div><dt>Source</dt><dd>${esc(job.source?.name || job.source_slug)}</dd></div></dl>
+    <dl class="meta-list"><div><dt>Locations</dt><dd>${esc(allLocations(job))}</dd></div><div><dt>Country</dt><dd>${esc(country(job))}</dd></div><div><dt>Compensation</dt><dd>${esc(salary(job))}</dd></div><div><dt>Role level</dt><dd>${esc(roleLevel(job.title))}</dd></div><div><dt>Work arrangement</dt><dd>${esc(label(job.workplace_type, 'Not provided by source'))}</dd></div><div><dt>First seen</dt><dd>${esc(absoluteDate(job.first_seen_at))}</dd></div><div><dt>Source</dt><dd>${esc(job.source?.name || job.source_slug)}</dd></div></dl>
     <section class="drawer-section"><h3>Field excerpt</h3><p>${esc(truncate(plainText(job.description_text) || 'No description text was supplied by the source.', 480))}</p></section>
     <div class="action-row drawer-actions">${currentState.tab === 'discarded' ? '<button class="button button-primary" type="button" data-restore>Restore to route</button>' : `${job.is_saved ? '<button class="button" type="button" data-unsave>Unsave</button>' : '<button class="button" type="button" data-save>Save</button>'}<button class="button" type="button" data-discard>Hide</button>${job.has_application ? '' : '<button class="button button-dark" type="button" data-track>Add to tracker</button>'}`}${official ? `<a class="button" href="${esc(official)}" target="_blank" rel="noopener noreferrer">Open official posting</a>` : ''}<a class="button button-primary" href="/app/job-detail.html?id=${job.id}">View full dossier</a></div></div>`;
   drawer.querySelector('[data-close]').addEventListener('click', () => closeDrawer());

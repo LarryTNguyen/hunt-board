@@ -1,0 +1,12 @@
+{
+  "total": 2,
+  "jobPostings": [
+    {
+      "title": "Software Engineer",
+      "externalPath": "/job/Seattle-WA/Software-Engineer_REQ-123",
+      "locationsText": "Seattle, WA",
+      "postedOn": "Posted 2 Days Ago",
+      "bulletFields": ["REQ-123"]
+    }
+  ]
+}

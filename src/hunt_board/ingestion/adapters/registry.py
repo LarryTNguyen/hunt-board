@@ -8,6 +8,7 @@ from hunt_board.ingestion.adapters.ashby import AshbyAdapter
 from hunt_board.ingestion.adapters.base import ATSAdapter
 from hunt_board.ingestion.adapters.greenhouse import GreenhouseAdapter
 from hunt_board.ingestion.adapters.lever import LeverAdapter
+from hunt_board.ingestion.adapters.workday import WorkdayAdapter
 
 
 AdapterFactory = Callable[..., ATSAdapter]
@@ -17,6 +18,7 @@ ADAPTER_REGISTRY: dict[str, AdapterFactory] = {
     "greenhouse": GreenhouseAdapter,
     "lever": LeverAdapter,
     "ashby": AshbyAdapter,
+    "workday": WorkdayAdapter,
 }
 
 

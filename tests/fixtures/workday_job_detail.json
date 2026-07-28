@@ -1,0 +1,28 @@
+{
+  "jobPostingInfo": {
+    "id": "0123456789abcdef0123456789abcdef",
+    "title": "Software Engineer",
+    "jobDescription": "<div onclick=\"bad()\"><p>Build <strong>reliable services</strong>.</p><script>alert(1)</script></div>",
+    "location": "Seattle, WA",
+    "additionalLocations": ["Austin, TX", "Seattle, WA"],
+    "postedOn": "Posted 2 Days Ago",
+    "startDate": "2026-07-22",
+    "timeType": "Full time",
+    "remoteType": "Hybrid",
+    "jobReqId": "REQ-123",
+    "jobPostingId": "Software-Engineer_REQ-123",
+    "jobRequisitionLocation": {
+      "descriptor": "Seattle, WA",
+      "country": {
+        "descriptor": "United States",
+        "alpha2Code": "US"
+      }
+    },
+    "externalUrl": "https://example.wd5.myworkdayjobs.com/en-US/External/job/Seattle-WA/Software-Engineer_REQ-123",
+    "canApply": true,
+    "posted": true
+  },
+  "hiringOrganization": {
+    "name": "Must Not Replace Configured Company"
+  }
+}

@@ -2,7 +2,7 @@ from __future__ import annotations
 
 import asyncio
 import re
-from dataclasses import dataclass
+from dataclasses import dataclass, field
 from datetime import datetime, timezone
 from decimal import Decimal, InvalidOperation
 from typing import TYPE_CHECKING, Any, Protocol
@@ -96,6 +96,9 @@ def normalize_country(value: Any, *fallback_values: Any) -> tuple[str | None, st
             continue
         text = re.sub(r"\s+", " ", str(candidate)).strip()
         lowered = text.casefold()
+        if len(text) == 2 and text.isalpha():
+            code = text.upper()
+            return code, COUNTRY_NAMES.get(code, code)
         direct = COUNTRY_ALIASES.get(lowered)
         if direct:
             return direct, COUNTRY_NAMES[direct]
@@ -190,6 +193,7 @@ class NormalizedJob:
     posting_url: str | None = None
     posted_at: datetime | None = None
     updated_at: datetime | None = None
+    locations: list[dict[str, Any]] = field(default_factory=list)
 
 
 class ATSAdapter(Protocol):
