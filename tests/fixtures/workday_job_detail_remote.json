@@ -1,0 +1,20 @@
+{
+  "jobPostingInfo": {
+    "id": "fedcba9876543210fedcba9876543210",
+    "title": "Platform Engineer",
+    "jobDescription": "<p>Operate a global platform.</p>",
+    "location": "Tokyo, Japan",
+    "additionalLocations": [{"descriptor": "Osaka, Japan"}],
+    "postedOn": "Posted 30+ Days Ago",
+    "timeType": "Full time",
+    "remoteType": "Remote",
+    "jobRequisitionLocation": {
+      "descriptor": "Tokyo, Japan",
+      "country": {
+        "descriptor": "Japan",
+        "alpha2Code": "JP"
+      }
+    },
+    "posted": true
+  }
+}

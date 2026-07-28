@@ -1,6 +1,6 @@
 # Hunt Board
 
-Hunt Board is a backend-first job intelligence and personal job-search CRM. Milestone 1 ingests and ranks curated Greenhouse, Lever, and Ashby jobs. Milestone 2 adds the single-user workflow APIs. Milestone 3 serves a live, responsive field-desk frontend from FastAPI. Milestone 3.5 hardens ingestion boundaries. Milestone 4 adds server-paginated discovery, PostgreSQL full-text search, a separate scheduler process, and a live operations desk.
+Hunt Board is a backend-first job intelligence and personal job-search CRM. It ingests curated Greenhouse, Lever, Ashby, and explicitly configured public Workday boards. Milestone 4.1 adds complete, safety-bounded Workday Candidate Experience JSON ingestion without browser automation or authenticated Workday APIs.
 
 ## Quick start with Docker
 
@@ -75,6 +75,46 @@ The live discovery desk at `/app/job-discovery.html` browses the complete server
 
 The source registry supports the milestone shape (`company_name`, `company_logo_url`, `careers_url`, `ats_type`, `ats_slug`, high/medium/low `priority`, `enabled`, `categories`, and `notes`) and the existing explicit `config` shape. `company_logo_url` is the authoritative logo; the frontend falls back to company initials if it is absent or fails to load. ATS slugs are always manually configured; no scraping-based ATS detection is performed.
 
+### Workday source configuration
+
+Workday uses the public Candidate Experience JSON surface, which is separate from Workday's authenticated tenant APIs and may change without notice. Host, tenant, and site are always explicit; Hunt Board never guesses or discovers them. Only HTTPS subdomains of `myworkdayjobs.com` and `myworkdaysite.com` are accepted.
+
+Add an owner-selected source disabled first:
+
+```yaml
+  - slug: example-workday
+    name: Example Workday
+    ats: workday
+    company_name: Example Company
+    careers_url: https://example.invalid.myworkdayjobs.com/en-US/External
+    enabled: false
+    priority: 1
+    poll_interval_minutes: 360
+    close_after_missed_runs: 12
+    config:
+      host: example.invalid.myworkdayjobs.com
+      tenant: example
+      site: External
+      locale: en-US
+      page_size: 20
+      detail_concurrency: 3
+      request_interval_ms: 200
+      max_jobs: 5000
+```
+
+Replace every placeholder with values copied from the selected public career site. `host`, `tenant`, `site`, and an HTTPS `careers_url` on the same host are required. The optional bounds are: page size 1-100, detail concurrency 1-8, request interval 0-10,000 ms, and max jobs 1-10,000. Exceeding `max_jobs` fails rather than truncating.
+
+Synchronize and stage rollout with two dry runs:
+
+```powershell
+uv run hunt-board sync-sources
+uv run hunt-board ingest --source example-workday --dry-run
+uv run hunt-board ingest --source example-workday --dry-run
+uv run hunt-board ingest --source example-workday
+```
+
+Compare listing counts and sample public URLs before setting `enabled: true`. Use a conservative cadence because each scan performs sequential listing-page requests plus one bounded detail request per job. Persistent access denial, unsupported response contracts, or bot protection fail clearly; Hunt Board does not bypass them with cookies, proxies, or browser automation.
+
 ## Database and source commands
 
 ```powershell
@@ -104,7 +144,7 @@ The equivalent API operations are `POST /admin/ingestion/run` and `POST /admin/i
 
 Source fetches run concurrently, while SQLAlchemy writes remain serial and transaction-isolated. Repeated postings are reported as `unchanged_jobs`; only new or materially changed postings count toward `total_upserted`. Running without `--source` scans only enabled sources that are due. Passing `--source` forces that configured source for local validation.
 
-Real runs are mutually exclusive. PostgreSQL uses a session advisory lock held on a dedicated connection; lock contention creates no run row and returns HTTP `409` (or a nonzero CLI exit). Dry runs do not take the lock. On startup, a lock-owning run marks older `running` records `abandoned` using `HUNT_BOARD_STALE_RUN_MINUTES` (default `120`). ATS HTML is sanitized before normalized storage while the original payload remains only in `raw_json`.
+Real runs are mutually exclusive. PostgreSQL uses a session advisory lock held on a dedicated connection; lock contention creates no run row and returns HTTP `409` (or a nonzero CLI exit). Dry runs do not take the lock. On startup, a lock-owning run marks older `running` records `abandoned` using `HUNT_BOARD_STALE_RUN_MINUTES` (default `120`). ATS HTML is sanitized before normalized storage while the original payload remains only in `raw_json`. Workday stores a deterministic `{listing, detail}` composite raw payload, and job APIs expose only normalized fields. Multi-location jobs expose an optional typed `locations` collection while existing scalar fields remain compatible.
 
 Inspect or purge expired raw payloads without deleting normalized records:
 
@@ -209,4 +249,4 @@ $env:HUNT_BOARD_TEST_POSTGRES_URL='postgresql+psycopg://hunt_board:hunt_board@lo
 uv run pytest -m postgres tests/test_milestone_four_postgres.py
 ```
 
-See [architecture](docs/architecture.md), [Milestone 2 workflows](docs/milestone-2.md), [Milestone 3 frontend](docs/milestone-3.md), [Milestone 3.5](docs/milestone-3.5.md), [Milestone 4](docs/milestone-4.md), and [ingestion pipeline](docs/ingestion-pipeline.md) for design details.
+See [architecture](docs/architecture.md), [Milestone 2 workflows](docs/milestone-2.md), [Milestone 3 frontend](docs/milestone-3.md), [Milestone 3.5](docs/milestone-3.5.md), [Milestone 4](docs/milestone-4.md), [Milestone 4.1](docs/milestone-4.1.md), and [ingestion pipeline](docs/ingestion-pipeline.md) for design details.

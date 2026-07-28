@@ -1,4 +1,4 @@
-# Hunt Board Architecture through Milestone 4
+# Hunt Board Architecture through Milestone 4.1
 
 Hunt Board uses a conventional Python `src/` layout. The FastAPI application is assembled in `hunt_board.main`, while database, ingestion, matching, job-domain, API, and admin concerns remain in separate packages.
 
@@ -14,7 +14,7 @@ Hunt Board uses a conventional Python `src/` layout. The FastAPI application is 
 - `tracking`: saved-job and application/application-event HTTP workflows.
 - `notifications`: a synchronous, database-backed in-app inbox with no external delivery infrastructure.
 
-PostgreSQL is the source of truth. A posting stores its latest normalized fields, including an ISO country code and structured compensation range when the ATS provides them, plus the latest raw ATS payload, raw-payload expiry date, description hash, visibility score, lifecycle state, and source identity. Company logo URLs belong to the normalized source record rather than being copied into every posting. `job_versions` retains each distinct description payload. Normalized records are never deleted by ingestion.
+PostgreSQL is the source of truth. A posting stores its latest normalized fields, including an ISO country code, a source-independent structured location collection, and structured compensation range when the ATS provides them, plus the latest raw ATS payload, raw-payload expiry date, description hash, visibility score, lifecycle state, and source identity. Company logo URLs belong to the normalized source record rather than being copied into every posting. `job_versions` retains each distinct description payload. Normalized records are never deleted by ingestion.
 
 The single-user MVP models users, preferences, matches, saved jobs, applications, application statuses/events, and notifications separately. `user_preferences` is canonical; `users.preferences_json` is updated only as a compatibility snapshot. `applications.status_id` is canonical; the legacy `applications.status` string is kept synchronized as a display/compatibility slug.
 
@@ -27,6 +27,8 @@ Application status transitions and manual events share one ordered timeline. A s
 Real ingestion creates notifications synchronously in the source transaction. Stable dedupe keys prevent repeated `new_match`, `reposted_job`, and tracked-job `job_updated` notifications. Dry-run ingestion never calls the persistence path and therefore cannot create notifications or CRM state.
 
 The adapter registry in `ingestion/adapters/registry.py` is the only owner of supported ATS keys and factories. YAML validation reads those registered keys, and ingestion asks the registry to construct adapters; source-slug overrides remain available for offline tests. Sanitization is a separate ingestion-boundary service built on `lxml`, so stored posting and version HTML share the same conservative allowlist while `raw_json` remains untouched.
+
+The Workday adapter is deliberately isolated around the public Candidate Experience JSON contract. It validates an explicitly configured host, tenant, site, locale, and career URL before network access. A scan first enumerates listing pages sequentially and accepts them only when the reported total is stable and exactly matches unique safe `/job/` paths. It then uses a fixed-size worker pool for detail reads while preserving listing order. A possible mid-scan withdrawal permits one complete listing reconciliation; unresolved or repeated churn fails the whole source. No normalized write begins until the adapter returns a complete result.
 
 Every real ingestion run acquires one global lock before recovery or writes. PostgreSQL uses a session advisory lock on a dedicated connection held through finalization; SQLite uses an in-process lock for deterministic tests. After lock acquisition, stale `running` run/source-run rows are marked `abandoned`. Unexpected exceptions roll back partial work, finalize the already-created run as `failed`, and release the lock in `finally`.
 
@@ -42,4 +44,4 @@ The operations boundary consists of a typed aggregate read at `GET /admin/operat
 
 ## Deliberate boundaries
 
-The system remains single-user. The frontend is served as same-origin static HTML/CSS/JavaScript from FastAPI. There is no login/session layer, resume analysis, email or push delivery, distributed task queue, external search service, or new ATS adapter. PostgreSQL-native full-text search is deliberately part of the primary database rather than a separate service.
+The system remains single-user. The frontend is served as same-origin static HTML/CSS/JavaScript from FastAPI. There is no login/session layer, resume analysis, email or push delivery, distributed task queue, external search service, authenticated Workday integration, source discovery, CAPTCHA bypass, proxy service, or browser automation. PostgreSQL-native full-text search is deliberately part of the primary database rather than a separate service.

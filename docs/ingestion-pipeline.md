@@ -5,7 +5,7 @@ An ingestion run follows these stages:
 1. Load and validate `data/sources.yaml`. Both the milestone field names (`ats_type`, `ats_slug`, and high/medium/low priority) and the original project field names remain accepted.
 2. Select an explicitly requested source, or all enabled sources whose `next_due_at` has passed.
 3. For a real run, atomically acquire the ingestion lock, recover stale run records, and create `scrape_runs`. Dry runs take no lock and create no records.
-4. Fetch through adapters registered in the central adapter registry with a global concurrency bound. Requests use configurable timeouts and retry transient network, timeout, rate-limit, and server failures with exponential backoff.
+4. Fetch through adapters registered in the central adapter registry with a global concurrency bound. Requests use configurable timeouts and retry transient network, timeout, rate-limit, and server failures with exponential backoff. Workday additionally establishes a complete stable listing before its bounded detail phase.
 5. Normalize ATS fields into `NormalizedJob`, sanitize external HTML with a conservative allowlist, derive safe plain text, and retain the unchanged original payload in `raw_json`.
 6. Apply title-only include, role-group, exclude, level, freshness, location/work-type, and source-priority scoring.
 7. Deduplicate in layers: source plus external ID, canonical apply URL, then the uncertain company/title/location signal. Uncertain matches remain separate and create an open duplicate review.
@@ -45,11 +45,37 @@ sources:
     company_name: Example Company
     config:
       organization: company-ashby-slug
+
+  - slug: example-workday
+    name: Example Workday
+    ats: workday
+    company_name: Example Company
+    careers_url: https://example.invalid.myworkdayjobs.com/en-US/External
+    enabled: false
+    poll_interval_minutes: 360
+    close_after_missed_runs: 12
+    config:
+      host: example.invalid.myworkdayjobs.com
+      tenant: example
+      site: External
+      locale: en-US
+      page_size: 20
+      detail_concurrency: 3
+      request_interval_ms: 200
+      max_jobs: 5000
 ```
 
-The repository’s default registry contains one public example for each supported ATS. Tests never call those boards; they use `tests/fixtures/*.json` and adapter overrides.
+The repository's default registry keeps the owner's three existing enabled sources unchanged and does not invent a live Workday employer. Workday examples remain disabled placeholders in documentation. Tests never call live boards; they use `tests/fixtures/*.json`, route-aware transports, and adapter overrides.
 
 Both policy fields are optional. Omitted closure policy defaults to 12 successful misses. Omitted cadence preserves the prior priority mapping exactly: priority 5 is 360 minutes, priority 3-4 is 720 minutes, and priority 0-2 is 1440 minutes. Effective values are persisted on `sources` and returned by the admin API.
+
+### Workday complete-scan boundary
+
+Workday listing requests are read-only JSON POSTs. Pages are fetched sequentially from offset zero, with a stable nonnegative total, unique validated `/job/` paths, a derived maximum page count, and no early empty page. A possibly churn-related integrity failure retries the entire listing once. A repeated inconsistency or `max_jobs` breach fails without truncation.
+
+Only after the listing is complete does a fixed-size worker pool fetch detail JSON. Request starts honor source pacing, transient errors use the shared retry policy, and valid `Retry-After` values for 429/503 are capped at 30 seconds. Details remain in listing order. A 404, 410, or explicit `posted: false` triggers at most one fresh complete listing. The path may be omitted only if it disappeared; newly listed paths are fetched, while unresolved or repeated churn fails the source.
+
+The complete adapter result then enters the normal sanitizer, dedupe, ranking, and lifecycle path. Thus a listing, detail, parsing, access-denied, or reconciliation failure cannot persist a subset, increment missed-run counters, or close existing jobs. Every default Workday test uses route-aware local fixtures and no live network.
 
 ## Incremental identity and change detection
 

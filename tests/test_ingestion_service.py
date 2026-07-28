@@ -91,6 +91,14 @@ async def test_ingestion_writes_metrics_and_marks_closed(db_session) -> None:
     stored = db_session.scalar(select(JobPosting).where(JobPosting.external_job_id == "1"))
     assert stored.location_country_code == "US"
     assert stored.location_country == "United States"
+    assert stored.locations_json == [
+        {
+            "display": "Remote, United States",
+            "country_code": "US",
+            "country": "United States",
+            "is_primary": True,
+        }
+    ]
     assert stored.salary_min == Decimal("100000")
     assert stored.salary_max == Decimal("140000")
     assert stored.salary_currency == "USD"

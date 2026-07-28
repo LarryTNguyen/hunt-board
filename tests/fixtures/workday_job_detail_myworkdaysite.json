@@ -1,0 +1,12 @@
+{
+  "jobPostingInfo": {
+    "jobPostingId": "SITE-789",
+    "title": "Site Reliability Engineer",
+    "jobDescription": "<p>Keep systems available.</p>",
+    "location": "Remote",
+    "postedOn": "Posted Yesterday",
+    "remoteType": "Work from Home",
+    "country": {"descriptor": "Canada", "alpha2Code": "CA"},
+    "posted": true
+  }
+}

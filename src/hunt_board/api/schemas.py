@@ -27,6 +27,13 @@ class ApplicationStatusRead(BaseModel):
     is_terminal: bool
 
 
+class JobLocationRead(BaseModel):
+    display: str
+    country_code: str | None = None
+    country: str | None = None
+    is_primary: bool = False
+
+
 class JobPostingRead(BaseModel):
     id: int
     source_id: int
@@ -38,6 +45,7 @@ class JobPostingRead(BaseModel):
     location: str | None
     location_country_code: str | None
     location_country: str | None
+    locations: list[JobLocationRead] = Field(default_factory=list)
     department: str | None
     employment_type: str | None
     workplace_type: str | None
@@ -105,6 +113,7 @@ class JobSummaryRead(BaseModel):
     location: str | None
     location_country_code: str | None
     location_country: str | None
+    locations: list[JobLocationRead] = Field(default_factory=list)
     salary_min: float | None
     salary_max: float | None
     salary_currency: str | None
