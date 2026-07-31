@@ -7,8 +7,8 @@ from sqlalchemy import select, update
 from sqlalchemy.orm import Session
 
 from hunt_board.api.schemas import NotificationRead, NotificationReadAllResponse
-from hunt_board.auth.single_user import get_single_user
-from hunt_board.db.models import DiscardedJob, Notification
+from hunt_board.auth.dependencies import require_user
+from hunt_board.db.models import DiscardedJob, Notification, User
 from hunt_board.db.session import get_db
 
 router = APIRouter(prefix="/notifications", tags=["notifications"])
@@ -19,9 +19,9 @@ def list_notifications(
     unread: bool | None = None,
     limit: int = Query(default=50, ge=1, le=200),
     offset: int = Query(default=0, ge=0),
+    user: User = Depends(require_user),
     db: Session = Depends(get_db),
 ) -> list[Notification]:
-    user = get_single_user(db)
     statement = (
         select(Notification)
         .outerjoin(
@@ -43,8 +43,11 @@ def list_notifications(
 
 
 @router.patch("/{notification_id}/read", response_model=NotificationRead)
-def mark_notification_read(notification_id: int, db: Session = Depends(get_db)) -> Notification:
-    user = get_single_user(db)
+def mark_notification_read(
+    notification_id: int,
+    user: User = Depends(require_user),
+    db: Session = Depends(get_db),
+) -> Notification:
     notification = db.scalar(
         select(Notification).where(Notification.id == notification_id, Notification.user_id == user.id)
     )
@@ -58,8 +61,10 @@ def mark_notification_read(notification_id: int, db: Session = Depends(get_db)) 
 
 
 @router.post("/read-all", response_model=NotificationReadAllResponse)
-def mark_all_notifications_read(db: Session = Depends(get_db)) -> dict:
-    user = get_single_user(db)
+def mark_all_notifications_read(
+    user: User = Depends(require_user),
+    db: Session = Depends(get_db),
+) -> dict:
     result = db.execute(
         update(Notification)
         .where(Notification.user_id == user.id, Notification.read_at.is_(None))

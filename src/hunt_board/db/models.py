@@ -2,10 +2,11 @@ from __future__ import annotations
 
 from datetime import datetime, timezone
 from typing import Any
+from uuid import UUID
 
 from decimal import Decimal
 
-from sqlalchemy import Boolean, DateTime, Float, ForeignKey, Index, Integer, JSON, Numeric, String, Text, UniqueConstraint
+from sqlalchemy import Boolean, DateTime, Float, ForeignKey, Index, Integer, JSON, Numeric, String, Text, UniqueConstraint, Uuid
 from sqlalchemy.orm import Mapped, mapped_column, relationship
 
 from hunt_board.db.base import Base
@@ -26,16 +27,46 @@ class TimestampMixin:
 
 
 class User(TimestampMixin, Base):
+    """Hunt Board profile mapped to one trusted Supabase Auth identity."""
+
     __tablename__ = "users"
 
     id: Mapped[int] = mapped_column(Integer, primary_key=True)
+    auth_user_id: Mapped[UUID | None] = mapped_column(Uuid, nullable=True, unique=True)
     email: Mapped[str] = mapped_column(String(320), nullable=False, unique=True)
+    normalized_email: Mapped[str | None] = mapped_column(String(320), nullable=True, unique=True)
+    first_name: Mapped[str | None] = mapped_column(String(120))
+    last_name: Mapped[str | None] = mapped_column(String(120))
+    display_name: Mapped[str | None] = mapped_column(String(255))
+    role: Mapped[str] = mapped_column(String(20), default="user", nullable=False)
+    account_status: Mapped[str] = mapped_column(String(40), default="active", nullable=False)
     is_admin: Mapped[bool] = mapped_column(Boolean, default=True, nullable=False)
     is_active: Mapped[bool] = mapped_column(Boolean, default=True, nullable=False)
+    deactivated_at: Mapped[datetime | None] = mapped_column(DateTime(timezone=True))
+    deletion_scheduled_at: Mapped[datetime | None] = mapped_column(DateTime(timezone=True))
+    deleted_at: Mapped[datetime | None] = mapped_column(DateTime(timezone=True))
+    onboarding_completed_at: Mapped[datetime | None] = mapped_column(DateTime(timezone=True))
+    onboarding_skipped_at: Mapped[datetime | None] = mapped_column(DateTime(timezone=True))
     preferences_json: Mapped[dict[str, Any]] = mapped_column(JSON, default=dict, nullable=False)
 
     applications: Mapped[list[Application]] = relationship(back_populates="user")
     preference: Mapped[UserPreference | None] = relationship(back_populates="user", uselist=False)
+    saved_searches: Mapped[list[SavedSearch]] = relationship(back_populates="user")
+
+
+class Invitation(TimestampMixin, Base):
+    __tablename__ = "invitations"
+    __table_args__ = (
+        Index("ix_invitations_email_status", "normalized_email", "status"),
+    )
+
+    id: Mapped[int] = mapped_column(Integer, primary_key=True)
+    normalized_email: Mapped[str] = mapped_column(String(320), nullable=False)
+    inviter_user_id: Mapped[int] = mapped_column(ForeignKey("users.id"), nullable=False)
+    status: Mapped[str] = mapped_column(String(40), default="pending", nullable=False)
+    accepted_auth_user_id: Mapped[UUID | None] = mapped_column(Uuid)
+    accepted_at: Mapped[datetime | None] = mapped_column(DateTime(timezone=True))
+    revoked_at: Mapped[datetime | None] = mapped_column(DateTime(timezone=True))
 
 
 class UserPreference(TimestampMixin, Base):
@@ -184,6 +215,47 @@ class SavedJob(TimestampMixin, Base):
     notes: Mapped[str | None] = mapped_column(Text)
 
 
+class UserJobState(TimestampMixin, Base):
+    """Canonical combined saved/dismissed state for one user and catalog job."""
+
+    __tablename__ = "user_job_states"
+    __table_args__ = (
+        UniqueConstraint("user_id", "job_posting_id", name="uq_user_job_states_user_job"),
+        Index("ix_user_job_states_user_saved", "user_id", "saved_at"),
+        Index("ix_user_job_states_user_dismissed", "user_id", "dismissed_at"),
+    )
+
+    id: Mapped[int] = mapped_column(Integer, primary_key=True)
+    user_id: Mapped[int] = mapped_column(ForeignKey("users.id"), nullable=False)
+    job_posting_id: Mapped[int] = mapped_column(ForeignKey("job_postings.id"), nullable=False)
+    saved_at: Mapped[datetime | None] = mapped_column(DateTime(timezone=True))
+    dismissed_at: Mapped[datetime | None] = mapped_column(DateTime(timezone=True))
+    notes: Mapped[str | None] = mapped_column(Text)
+
+
+class SavedSearch(TimestampMixin, Base):
+    __tablename__ = "saved_searches"
+    __table_args__ = (
+        UniqueConstraint("user_id", "name", name="uq_saved_searches_user_name"),
+        Index("ix_saved_searches_user_active", "user_id", "is_active"),
+        Index("ix_saved_searches_user_last_viewed", "user_id", "last_viewed_at"),
+    )
+
+    id: Mapped[int] = mapped_column(Integer, primary_key=True)
+    user_id: Mapped[int] = mapped_column(ForeignKey("users.id"), nullable=False)
+    name: Mapped[str] = mapped_column(String(120), nullable=False)
+    description: Mapped[str | None] = mapped_column(Text)
+    filters_json: Mapped[dict[str, Any]] = mapped_column(JSON, default=dict, nullable=False)
+    sort_by: Mapped[str] = mapped_column(String(40), default="ranking_score", nullable=False)
+    sort_order: Mapped[str] = mapped_column(String(4), default="desc", nullable=False)
+    is_default: Mapped[bool] = mapped_column(Boolean, default=False, nullable=False)
+    is_active: Mapped[bool] = mapped_column(Boolean, default=True, nullable=False)
+    notify_on_new_matches: Mapped[bool] = mapped_column(Boolean, default=False, nullable=False)
+    last_viewed_at: Mapped[datetime | None] = mapped_column(DateTime(timezone=True))
+
+    user: Mapped[User] = relationship(back_populates="saved_searches")
+
+
 class DiscardedJob(TimestampMixin, Base):
     __tablename__ = "discarded_jobs"
     __table_args__ = (
@@ -208,7 +280,6 @@ class ApplicationStatus(TimestampMixin, Base):
 
 class Application(TimestampMixin, Base):
     __tablename__ = "applications"
-    __table_args__ = (UniqueConstraint("user_id", "job_posting_id", name="uq_applications_user_job"),)
 
     id: Mapped[int] = mapped_column(Integer, primary_key=True)
     user_id: Mapped[int] = mapped_column(ForeignKey("users.id"), nullable=False)
@@ -238,7 +309,9 @@ class ApplicationEvent(TimestampMixin, Base):
 
 class Notification(TimestampMixin, Base):
     __tablename__ = "notifications"
-    __table_args__ = (UniqueConstraint("dedupe_key", name="uq_notifications_dedupe_key"),)
+    __table_args__ = (
+        UniqueConstraint("user_id", "dedupe_key", name="uq_notifications_user_dedupe_key"),
+    )
 
     id: Mapped[int] = mapped_column(Integer, primary_key=True)
     user_id: Mapped[int] = mapped_column(ForeignKey("users.id"), nullable=False)
@@ -248,6 +321,19 @@ class Notification(TimestampMixin, Base):
     dedupe_key: Mapped[str] = mapped_column(String(500), nullable=False)
     payload_json: Mapped[dict[str, Any]] = mapped_column(JSON, default=dict, nullable=False)
     read_at: Mapped[datetime | None] = mapped_column(DateTime(timezone=True))
+
+
+class AuditEvent(TimestampMixin, Base):
+    __tablename__ = "audit_events"
+    __table_args__ = (Index("ix_audit_events_event_created", "event_name", "created_at"),)
+
+    id: Mapped[int] = mapped_column(Integer, primary_key=True)
+    event_name: Mapped[str] = mapped_column(String(120), nullable=False)
+    actor_user_id: Mapped[int | None] = mapped_column(ForeignKey("users.id"))
+    target_type: Mapped[str | None] = mapped_column(String(80))
+    target_id: Mapped[str | None] = mapped_column(String(255))
+    request_id: Mapped[str | None] = mapped_column(String(64))
+    details_json: Mapped[dict[str, Any]] = mapped_column(JSON, default=dict, nullable=False)
 
 
 class DuplicateReview(TimestampMixin, Base):

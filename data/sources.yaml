@@ -50,7 +50,7 @@ sources:
     close_after_missed_runs: 12
     config:
       host: workday.wd5.myworkdayjobs.com
-      tenant: Workday
+      tenant: workday
       site: Workday
       locale: en-US
       page_size: 20

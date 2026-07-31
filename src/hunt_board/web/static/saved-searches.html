@@ -1,0 +1,51 @@
+<!doctype html>
+<html lang="en">
+<head>
+  <meta charset="utf-8">
+  <meta name="viewport" content="width=device-width,initial-scale=1">
+  <title>Saved routes — Hunt Board</title>
+  <link rel="stylesheet" href="/app/assets/app.css?v=20260727-5">
+  <script type="module" src="/app/assets/pages/saved-searches.js?v=20260727-5"></script>
+</head>
+<body>
+  <div data-app-nav="routes"></div>
+  <main class="page-main" id="main-content" data-saved-searches>
+    <div class="page-shell routes-shell">
+      <header class="page-intro">
+        <div>
+          <p class="coordinate">Route cabinet / Repeatable searches</p>
+          <h1>Save the terrain, review only what changed</h1>
+          <p>Each route keeps its discovery filters and remembers the last time you reviewed its matches.</p>
+        </div>
+        <span class="preview-label">Daily hunt routes</span>
+      </header>
+      <p class="dashboard-message" data-search-message role="status" aria-live="polite"></p>
+      <section class="route-editor" aria-labelledby="route-form-title">
+        <div><p class="utility-label">Route builder</p><h2 id="route-form-title">Create a saved route</h2><p>Start with the filters you use most. The API preserves the full discovery contract.</p></div>
+        <form data-search-form>
+          <input type="hidden" name="id">
+          <div class="form-grid">
+            <label class="control-field"><span>Name</span><input class="text-input" name="name" maxlength="120" required placeholder="Backend internships"></label>
+            <label class="control-field"><span>Description</span><input class="text-input" name="description" maxlength="2000" placeholder="What makes this route useful"></label>
+            <label class="control-field"><span>Query</span><input class="text-input" name="q" maxlength="500" placeholder="backend engineer"></label>
+            <label class="control-field"><span>Country</span><input class="text-input" name="country" maxlength="120" placeholder="US"></label>
+            <label class="control-field"><span>Minimum score</span><input class="text-input" name="min_score" type="number" min="0" max="100" step="1" placeholder="70"></label>
+            <label class="control-field"><span>First posted within days</span><input class="text-input" name="posted_within_days" type="number" min="1" max="3650" placeholder="7"></label>
+          </div>
+          <div class="route-choice-row">
+            <label><input type="checkbox" name="remote_only"> Remote only</label>
+            <label><input type="checkbox" name="is_active" checked> Active</label>
+            <label><input type="checkbox" name="is_default"> Default route</label>
+          </div>
+          <div class="action-row"><button class="button button-primary" type="submit" data-save-search>Save route</button><button class="button button-quiet" type="button" data-cancel-edit hidden>Cancel edit</button></div>
+        </form>
+      </section>
+      <section aria-labelledby="saved-routes-title"><div class="section-heading"><h2 id="saved-routes-title">Your routes</h2></div><div class="route-card-grid" data-search-list></div></section>
+      <section data-search-matches aria-labelledby="route-matches-title" hidden>
+        <div class="section-heading"><div><p class="utility-label">Selected route</p><h2 id="route-matches-title" data-match-title>Route matches</h2></div><div class="action-row"><label class="new-only-toggle"><input type="checkbox" data-new-only> New since review only</label><button class="button button-primary" type="button" data-mark-reviewed>Mark reviewed</button></div></div>
+        <div class="dashboard-match-list" data-match-list></div>
+      </section>
+    </div>
+  </main>
+</body>
+</html>

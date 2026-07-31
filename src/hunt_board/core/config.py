@@ -19,6 +19,11 @@ class Settings:
     scheduler_interval_seconds: int
     scheduler_run_on_startup: bool
     scheduler_enabled: bool
+    environment: str
+    supabase_url: str
+    supabase_anon_key: str
+    supabase_jwt_audience: str
+    supabase_jwt_issuer: str
 
 
 def _environment_bool(name: str, default: bool) -> bool:
@@ -56,4 +61,16 @@ def get_settings() -> Settings:
         ),
         scheduler_run_on_startup=_environment_bool("HUNT_BOARD_SCHEDULER_RUN_ON_STARTUP", True),
         scheduler_enabled=_environment_bool("HUNT_BOARD_SCHEDULER_ENABLED", True),
+        environment=os.environ.get("HUNT_BOARD_ENVIRONMENT", "development").strip().lower(),
+        supabase_url=os.environ.get("SUPABASE_URL", "").rstrip("/"),
+        supabase_anon_key=os.environ.get("SUPABASE_ANON_KEY", ""),
+        supabase_jwt_audience=os.environ.get("SUPABASE_JWT_AUDIENCE", "authenticated"),
+        supabase_jwt_issuer=(
+            os.environ.get("SUPABASE_JWT_ISSUER", "").strip()
+            or (
+                f"{os.environ.get('SUPABASE_URL', '').rstrip('/')}/auth/v1"
+                if os.environ.get("SUPABASE_URL")
+                else ""
+            )
+        ),
     )

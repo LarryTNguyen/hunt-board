@@ -25,7 +25,7 @@ from hunt_board.db.models import (
     User,
     UserPreference,
 )
-from hunt_board.ingestion.adapters import ATSAdapter, NormalizedJob, create_adapter
+from hunt_board.ingestion.adapters import AdapterFetchResult, ATSAdapter, NormalizedJob, create_adapter
 from hunt_board.ingestion.lock import (
     IngestionAlreadyRunningError,
     IngestionRunLock,
@@ -52,6 +52,7 @@ class SourceIngestionSummary:
     unchanged_jobs: int = 0
     closed_count: int = 0
     duplicates_found: int = 0
+    skipped_count: int = 0
     error_count: int = 0
     error_message: str | None = None
     duration_ms: int = 0
@@ -81,6 +82,9 @@ class _SourceFetchResult:
     started_at: datetime
     finished_at: datetime
     jobs: list[NormalizedJob] = field(default_factory=list)
+    lifecycle_authoritative: bool = True
+    skipped_count: int = 0
+    warning_message: str | None = None
     error_message: str | None = None
 
 
@@ -181,9 +185,13 @@ class IngestionService:
                 summary.total_duplicates += source_summary.duplicates_found
                 summary.total_errors += source_summary.error_count
 
-        if summary.total_errors == len(source_configs) and source_configs:
+        failed_sources = sum(item.status == "failed" for item in summary.source_runs)
+        degraded_sources = sum(
+            item.status == "completed_with_errors" for item in summary.source_runs
+        )
+        if failed_sources == len(source_configs) and source_configs:
             summary.status = "failed"
-        elif summary.total_errors:
+        elif failed_sources or degraded_sources:
             summary.status = "completed_with_errors"
         else:
             summary.status = "completed"
@@ -302,13 +310,26 @@ class IngestionService:
         try:
             async with semaphore:
                 adapter = self._adapter_for(source_config, client)
-                jobs = await adapter.fetch_jobs(source_config)
+                adapter_result = await adapter.fetch_jobs(source_config)
+                if isinstance(adapter_result, AdapterFetchResult):
+                    jobs = adapter_result.jobs
+                    lifecycle_authoritative = adapter_result.lifecycle_authoritative
+                    skipped_count = adapter_result.skipped_count
+                    warning_message = adapter_result.warning_message
+                else:
+                    jobs = adapter_result
+                    lifecycle_authoritative = True
+                    skipped_count = 0
+                    warning_message = None
                 jobs = [self._sanitize_job(job) for job in jobs]
             return _SourceFetchResult(
                 source=source_config,
                 started_at=started_at,
                 finished_at=datetime.now(timezone.utc),
                 jobs=jobs,
+                lifecycle_authoritative=lifecycle_authoritative,
+                skipped_count=skipped_count,
+                warning_message=warning_message,
             )
         except Exception as exc:  # each fetch is isolated so other sources can finish
             return _SourceFetchResult(
@@ -331,6 +352,9 @@ class IngestionService:
             source_slug=source_config.slug,
             status="running",
             fetched_count=len(fetch_result.jobs),
+            skipped_count=fetch_result.skipped_count,
+            error_count=fetch_result.skipped_count,
+            error_message=fetch_result.warning_message,
         )
         source_run: ScrapeSourceRun | None = None
         if scrape_run:
@@ -388,19 +412,28 @@ class IngestionService:
                         source_summary.duplicates_found += int(duplicate_found)
                     if outcome != "unchanged":
                         source_summary.upserted_count += 1
-                if not dry_run and source_row:
+                if not dry_run and source_row and fetch_result.lifecycle_authoritative:
                     source_summary.closed_count = self._mark_closed(
                         db,
                         source_row,
                         seen_external_ids,
                         source_config.close_after_missed_runs,
                     )
-            source_summary.status = "completed"
+            source_summary.status = (
+                "completed"
+                if fetch_result.lifecycle_authoritative
+                else "completed_with_errors"
+            )
             if source_row and not dry_run:
-                source_row.health_status = "healthy"
-                source_row.consecutive_failures = 0
-                source_row.last_successful_at = datetime.now(timezone.utc)
-                source_row.last_error = None
+                if fetch_result.lifecycle_authoritative:
+                    source_row.health_status = "healthy"
+                    source_row.consecutive_failures = 0
+                    source_row.last_successful_at = datetime.now(timezone.utc)
+                    source_row.last_error = None
+                else:
+                    source_row.health_status = "unhealthy"
+                    source_row.consecutive_failures += 1
+                    source_row.last_error = fetch_result.warning_message
                 source_row.next_due_at = self._next_due(source_config.effective_poll_interval_minutes)
         except Exception as exc:  # adapters isolate one source failure from the rest of the run
             source_summary.status = "failed"
@@ -495,22 +528,9 @@ class IngestionService:
 
     @staticmethod
     def _preferences(db: Session) -> UserPreferences:
-        preference = db.scalar(select(UserPreference).order_by(UserPreference.id))
-        if preference:
-            return UserPreferences(
-                include_keywords=preference.include_keywords,
-                exclude_keywords=preference.exclude_keywords,
-                role_groups=preference.role_groups,
-                preferred_levels=preference.preferred_levels,
-                preferred_locations=preference.preferred_locations,
-                home_location=preference.home_location,
-                radius_miles=preference.radius_miles,
-                country=preference.country,
-                remote_allowed=preference.remote_allowed,
-                minimum_score_threshold=preference.minimum_score_threshold,
-            )
-        user = db.scalar(select(User).order_by(User.id))
-        return UserPreferences.model_validate(user.preferences_json or {}) if user else UserPreferences()
+        # Shared catalog scores must not inherit an arbitrary user's private
+        # preferences. Per-profile rankings are persisted in job_matches.
+        return UserPreferences()
 
     def _upsert_job(
         self,
@@ -617,11 +637,11 @@ class IngestionService:
         elif decision.reason != "same canonical apply_url":
             target.duplicate_status = "unique"
             target.duplicate_of_job_id = None
-        self._record_match(db, target, ranking)
-        self._record_notifications(
+        self._record_user_results(
             db,
             target,
-            ranking,
+            job,
+            source.priority,
             outcome=outcome,
             reactivated=decision.reactivated,
             changed_version=version if outcome == "updated" else None,
@@ -704,11 +724,71 @@ class IngestionService:
             db.flush()
         return existing_version
 
+    @staticmethod
+    def _user_preferences(db: Session, user: User) -> UserPreferences:
+        preference = db.scalar(
+            select(UserPreference).where(UserPreference.user_id == user.id)
+        )
+        if preference is None:
+            return UserPreferences.model_validate(user.preferences_json or {})
+        return UserPreferences(
+            include_keywords=preference.include_keywords,
+            exclude_keywords=preference.exclude_keywords,
+            role_groups=preference.role_groups,
+            preferred_levels=preference.preferred_levels,
+            preferred_locations=preference.preferred_locations,
+            home_location=preference.home_location,
+            radius_miles=preference.radius_miles,
+            country=preference.country,
+            remote_allowed=preference.remote_allowed,
+            minimum_score_threshold=preference.minimum_score_threshold,
+        )
+
+    @classmethod
+    def _record_user_results(
+        cls,
+        db: Session,
+        job: JobPosting,
+        normalized_job: NormalizedJob,
+        source_priority: int,
+        *,
+        outcome: str,
+        reactivated: bool,
+        changed_version: JobVersion | None,
+        scrape_run: ScrapeRun | None,
+    ) -> None:
+        users = db.scalars(
+            select(User)
+            .where(
+                User.is_active.is_(True),
+                User.account_status == "active",
+                User.deleted_at.is_(None),
+            )
+            .order_by(User.id)
+        ).all()
+        for user in users:
+            preferences = cls._user_preferences(db, user)
+            ranking = rank_job(normalized_job, preferences, source_priority)
+            cls._record_match(db, job, user, ranking)
+            cls._record_notifications(
+                db,
+                job,
+                user,
+                preferences,
+                ranking,
+                outcome=outcome,
+                reactivated=reactivated,
+                changed_version=changed_version,
+                scrape_run=scrape_run,
+            )
+
     @classmethod
     def _record_notifications(
         cls,
         db: Session,
         job: JobPosting,
+        user: User,
+        preferences: UserPreferences,
         ranking: RankingResult,
         *,
         outcome: str,
@@ -716,11 +796,7 @@ class IngestionService:
         changed_version: JobVersion | None,
         scrape_run: ScrapeRun | None,
     ) -> None:
-        user = db.scalar(select(User).where(User.is_active.is_(True)).order_by(User.id))
-        if user is None:
-            return
-        preference = db.scalar(select(UserPreference).where(UserPreference.user_id == user.id))
-        threshold = preference.minimum_score_threshold if preference else UserPreferences().minimum_score_threshold
+        threshold = preferences.minimum_score_threshold
         qualifies = (
             job.active
             and job.duplicate_status != "duplicate"
@@ -736,6 +812,7 @@ class IngestionService:
                 kind="new_match",
                 dedupe_key=f"new_match:{user.id}:{job.id}",
                 message="New job match above your score threshold",
+                ranking_score=ranking.score,
             )
         if reactivated and qualifies and job.reposted_at is not None:
             cls._add_notification(
@@ -746,6 +823,7 @@ class IngestionService:
                 kind="reposted_job",
                 dedupe_key=f"reposted_job:{user.id}:{job.id}:{job.reposted_at.isoformat()}",
                 message="A matching job was reposted or reactivated",
+                ranking_score=ranking.score,
             )
         if changed_version is not None:
             is_tracked = db.scalar(
@@ -768,6 +846,7 @@ class IngestionService:
                     kind="job_updated",
                     dedupe_key=f"job_updated:{user.id}:{job.id}:{changed_version.id}",
                     message="A saved or applied job changed",
+                    ranking_score=ranking.score,
                 )
 
     @staticmethod
@@ -780,8 +859,14 @@ class IngestionService:
         kind: str,
         dedupe_key: str,
         message: str,
+        ranking_score: float,
     ) -> None:
-        if db.scalar(select(Notification.id).where(Notification.dedupe_key == dedupe_key)) is not None:
+        if db.scalar(
+            select(Notification.id).where(
+                Notification.user_id == user_id,
+                Notification.dedupe_key == dedupe_key,
+            )
+        ) is not None:
             return
         db.add(
             Notification(
@@ -794,17 +879,19 @@ class IngestionService:
                     "job_id": job.id,
                     "title": job.title,
                     "company_name": job.company_name,
-                    "ranking_score": job.ranking_score,
+                    "ranking_score": ranking_score,
                     "message": message,
                 },
             )
         )
 
     @staticmethod
-    def _record_match(db: Session, target: JobPosting, ranking: RankingResult) -> None:
-        user = db.scalar(select(User).order_by(User.id))
-        if not user:
-            return
+    def _record_match(
+        db: Session,
+        target: JobPosting,
+        user: User,
+        ranking: RankingResult,
+    ) -> None:
         match = db.scalar(
             select(JobMatch).where(JobMatch.user_id == user.id, JobMatch.job_posting_id == target.id)
         )

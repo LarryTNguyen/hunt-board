@@ -18,6 +18,7 @@ const pagination = document.querySelector('[data-pagination]');
 const pageSummary = document.querySelector('[data-page-summary]');
 const previousButton = document.querySelector('[data-previous]');
 const nextButton = document.querySelector('[data-next]');
+const saveRouteButton = document.querySelector('[data-save-route]');
 const controls = {
   q: document.querySelector('[data-search]'),
   source: document.querySelector('[data-source]'),
@@ -134,6 +135,43 @@ function feedParams() {
     params.application_state = 'any';
   }
   return params;
+}
+
+function savedRoutePayload() {
+  const params = feedParams();
+  const filters = {
+    q: params.q || null,
+    active: params.active ?? null,
+    source_slug: params.source_slug || null,
+    ats: params.ats || null,
+    country: params.country || null,
+    location: params.location || null,
+    workplace_type: params.workplace_type || null,
+    salary_known: params.salary_known ?? null,
+    posted_within_days: params.posted_within_days ? Number(params.posted_within_days) : null,
+    min_score: params.min_score ? Number(params.min_score) : null,
+    saved: params.saved ?? null,
+    discarded: params.discarded ?? false,
+    application_state: params.application_state,
+    include_duplicates: params.include_duplicates,
+  };
+  Object.keys(filters).forEach((key) => { if (filters[key] === null) delete filters[key]; });
+  return { filters, sort_by: params.sort_by, sort_order: params.sort_order };
+}
+
+async function saveCurrentRoute() {
+  const suggested = currentState.q ? `${currentState.q} route` : 'Daily route';
+  const name = window.prompt('Name this saved route', suggested)?.trim();
+  if (!name) return;
+  setBusy(saveRouteButton, true);
+  try {
+    await api.createSavedSearch({ name, ...savedRoutePayload() });
+    makeToast(`Saved “${name}”.`);
+  } catch (error) {
+    makeToast(error.message, 'error');
+  } finally {
+    setBusy(saveRouteButton, false);
+  }
 }
 
 function stateLabel(job) {
@@ -320,6 +358,7 @@ controls.location.addEventListener('input', updateLocation);
 });
 previousButton.addEventListener('click', () => updateUrl({ offset: Math.max(0, currentState.offset - LIMIT) }, { resetOffset: false }));
 nextButton.addEventListener('click', () => updateUrl({ offset: currentState.offset + LIMIT }, { resetOffset: false }));
+saveRouteButton.addEventListener('click', saveCurrentRoute);
 document.addEventListener('keydown', (event) => { if (event.key === 'Escape' && currentState.job) closeDrawer(); });
 window.addEventListener('popstate', () => {
   const previousSignature = feedSignature(currentState);

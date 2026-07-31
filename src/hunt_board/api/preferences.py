@@ -4,7 +4,8 @@ from fastapi import APIRouter, Depends
 from sqlalchemy.orm import Session
 
 from hunt_board.api.schemas import RescoreResponse, UserPreferenceRead, UserPreferenceUpdate
-from hunt_board.auth.single_user import get_single_user
+from hunt_board.auth.dependencies import require_user
+from hunt_board.db.models import User
 from hunt_board.db.session import get_db
 from hunt_board.matching.service import ensure_user_preference, preferences_from_row, rescore_jobs
 
@@ -12,14 +13,16 @@ router = APIRouter(prefix="/me/preferences", tags=["preferences"])
 
 
 @router.get("", response_model=UserPreferenceRead)
-def get_preferences(db: Session = Depends(get_db)):
-    user = get_single_user(db)
+def get_preferences(user: User = Depends(require_user), db: Session = Depends(get_db)):
     return ensure_user_preference(db, user)
 
 
 @router.patch("", response_model=UserPreferenceRead)
-def update_preferences(payload: UserPreferenceUpdate, db: Session = Depends(get_db)):
-    user = get_single_user(db)
+def update_preferences(
+    payload: UserPreferenceUpdate,
+    user: User = Depends(require_user),
+    db: Session = Depends(get_db),
+):
     preference = ensure_user_preference(db, user)
     changes = payload.model_dump(exclude_unset=True, exclude_none=True)
     for field, value in changes.items():
@@ -32,7 +35,9 @@ def update_preferences(payload: UserPreferenceUpdate, db: Session = Depends(get_
 
 
 @router.post("/rescore", response_model=RescoreResponse)
-def rescore_existing_jobs(db: Session = Depends(get_db)) -> dict:
-    user = get_single_user(db)
+def rescore_existing_jobs(
+    user: User = Depends(require_user),
+    db: Session = Depends(get_db),
+) -> dict:
     preference = ensure_user_preference(db, user)
     return rescore_jobs(db, user, preference)

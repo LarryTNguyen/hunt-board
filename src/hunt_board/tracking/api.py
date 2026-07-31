@@ -21,7 +21,7 @@ from hunt_board.api.schemas import (
     SavedJobRead,
     SavedJobUpdate,
 )
-from hunt_board.auth.single_user import get_single_user
+from hunt_board.auth.dependencies import require_user
 from hunt_board.db.models import (
     Application,
     ApplicationEvent,
@@ -30,6 +30,7 @@ from hunt_board.db.models import (
     JobPosting,
     SavedJob,
     Source,
+    User,
 )
 from hunt_board.db.session import get_db
 from hunt_board.jobs.service import job_summary, source_summary
@@ -90,13 +91,19 @@ def _application_payload(
 def list_saved_jobs(
     limit: int = Query(default=50, ge=1, le=200),
     offset: int = Query(default=0, ge=0),
+    user: User = Depends(require_user),
     db: Session = Depends(get_db),
 ) -> list[dict]:
-    user = get_single_user(db)
-    application_join = and_(
-        Application.job_posting_id == JobPosting.id,
-        Application.user_id == user.id,
+    latest_application_id = (
+        select(func.max(Application.id))
+        .where(
+            Application.job_posting_id == JobPosting.id,
+            Application.user_id == user.id,
+        )
+        .correlate(JobPosting)
+        .scalar_subquery()
     )
+    application_join = Application.id == latest_application_id
     rows = db.execute(
         select(SavedJob, JobPosting, Source, ApplicationStatus)
         .join(JobPosting, JobPosting.id == SavedJob.job_posting_id)
@@ -125,9 +132,9 @@ def list_saved_jobs(
 def save_job(
     job_id: int,
     payload: SavedJobCreate | None = None,
+    user: User = Depends(require_user),
     db: Session = Depends(get_db),
 ) -> dict:
-    user = get_single_user(db)
     job = db.get(JobPosting, job_id)
     if job is None:
         raise HTTPException(status_code=404, detail="Job not found")
@@ -143,6 +150,8 @@ def save_job(
         select(ApplicationStatus)
         .join(Application, Application.status_id == ApplicationStatus.id)
         .where(Application.user_id == user.id, Application.job_posting_id == job_id)
+        .order_by(Application.id.desc())
+        .limit(1)
     )
     source = db.get(Source, job.source_id)
     return {
@@ -156,8 +165,11 @@ def save_job(
 
 
 @router.delete("/jobs/{job_id}/save", response_model=SavedJobDeleteResponse)
-def unsave_job(job_id: int, db: Session = Depends(get_db)) -> dict:
-    user = get_single_user(db)
+def unsave_job(
+    job_id: int,
+    user: User = Depends(require_user),
+    db: Session = Depends(get_db),
+) -> dict:
     if db.get(JobPosting, job_id) is None:
         raise HTTPException(status_code=404, detail="Job not found")
     saved = db.scalar(
@@ -174,9 +186,9 @@ def unsave_job(job_id: int, db: Session = Depends(get_db)) -> dict:
 def list_discarded_jobs(
     limit: int = Query(default=50, ge=1, le=200),
     offset: int = Query(default=0, ge=0),
+    user: User = Depends(require_user),
     db: Session = Depends(get_db),
 ) -> list[dict]:
-    user = get_single_user(db)
     rows = db.execute(
         select(DiscardedJob, JobPosting, Source)
         .join(JobPosting, JobPosting.id == DiscardedJob.job_posting_id)
@@ -197,8 +209,11 @@ def list_discarded_jobs(
 
 
 @router.post("/jobs/{job_id}/discard", response_model=DiscardedJobRead)
-def discard_job(job_id: int, db: Session = Depends(get_db)) -> dict:
-    user = get_single_user(db)
+def discard_job(
+    job_id: int,
+    user: User = Depends(require_user),
+    db: Session = Depends(get_db),
+) -> dict:
     job = db.get(JobPosting, job_id)
     if job is None:
         raise HTTPException(status_code=404, detail="Job not found")
@@ -222,8 +237,11 @@ def discard_job(job_id: int, db: Session = Depends(get_db)) -> dict:
 
 
 @router.delete("/jobs/{job_id}/discard", response_model=DiscardedJobDeleteResponse)
-def restore_discarded_job(job_id: int, db: Session = Depends(get_db)) -> dict:
-    user = get_single_user(db)
+def restore_discarded_job(
+    job_id: int,
+    user: User = Depends(require_user),
+    db: Session = Depends(get_db),
+) -> dict:
     if db.get(JobPosting, job_id) is None:
         raise HTTPException(status_code=404, detail="Job not found")
     discarded = db.scalar(
@@ -240,8 +258,12 @@ def restore_discarded_job(job_id: int, db: Session = Depends(get_db)) -> dict:
 
 
 @router.patch("/saved-jobs/{saved_job_id}", response_model=SavedJobRead)
-def update_saved_job(saved_job_id: int, payload: SavedJobUpdate, db: Session = Depends(get_db)) -> dict:
-    user = get_single_user(db)
+def update_saved_job(
+    saved_job_id: int,
+    payload: SavedJobUpdate,
+    user: User = Depends(require_user),
+    db: Session = Depends(get_db),
+) -> dict:
     saved = db.scalar(select(SavedJob).where(SavedJob.id == saved_job_id, SavedJob.user_id == user.id))
     if saved is None:
         raise HTTPException(status_code=404, detail="Saved job not found")
@@ -255,6 +277,8 @@ def update_saved_job(saved_job_id: int, payload: SavedJobUpdate, db: Session = D
         select(ApplicationStatus)
         .join(Application, Application.status_id == ApplicationStatus.id)
         .where(Application.user_id == user.id, Application.job_posting_id == saved.job_posting_id)
+        .order_by(Application.id.desc())
+        .limit(1)
     )
     return {
         "id": saved.id,
@@ -267,7 +291,10 @@ def update_saved_job(saved_job_id: int, payload: SavedJobUpdate, db: Session = D
 
 
 @router.get("/application-statuses", response_model=list[ApplicationStatusRead])
-def list_application_statuses(db: Session = Depends(get_db)) -> list[ApplicationStatus]:
+def list_application_statuses(
+    _user: User = Depends(require_user),
+    db: Session = Depends(get_db),
+) -> list[ApplicationStatus]:
     return list(db.scalars(select(ApplicationStatus).order_by(ApplicationStatus.sort_order)).all())
 
 
@@ -280,9 +307,9 @@ def list_applications(
     saved_jobs_only: bool = False,
     limit: int = Query(default=50, ge=1, le=200),
     offset: int = Query(default=0, ge=0),
+    user: User = Depends(require_user),
     db: Session = Depends(get_db),
 ) -> list[dict]:
-    user = get_single_user(db)
     statement = (
         select(Application, JobPosting, Source, ApplicationStatus)
         .join(JobPosting, JobPosting.id == Application.job_posting_id)
@@ -323,19 +350,25 @@ def list_applications(
 def create_application(
     job_id: int,
     payload: ApplicationCreate | None = None,
+    user: User = Depends(require_user),
     db: Session = Depends(get_db),
 ) -> dict:
-    user = get_single_user(db)
     job = db.get(JobPosting, job_id)
     if job is None:
         raise HTTPException(status_code=404, detail="Job not found")
-    existing = db.scalar(
-        select(Application).where(Application.user_id == user.id, Application.job_posting_id == job_id)
-    )
     source = db.get(Source, job.source_id)
-    if existing is not None:
-        return _application_payload(db, existing, job, source)
-
+    if payload is None or not payload.create_new:
+        existing = db.scalar(
+            select(Application)
+            .where(
+                Application.user_id == user.id,
+                Application.job_posting_id == job_id,
+            )
+            .order_by(Application.id.desc())
+            .limit(1)
+        )
+        if existing is not None:
+            return _application_payload(db, existing, job, source)
     status = _resolve_status(db, payload.status if payload else None)
     application = Application(
         user_id=user.id,
@@ -372,8 +405,11 @@ def _application_row(db: Session, application_id: int, user_id: int):
 
 
 @router.get("/applications/{application_id}", response_model=ApplicationRead)
-def get_application(application_id: int, db: Session = Depends(get_db)) -> dict:
-    user = get_single_user(db)
+def get_application(
+    application_id: int,
+    user: User = Depends(require_user),
+    db: Session = Depends(get_db),
+) -> dict:
     row = _application_row(db, application_id, user.id)
     if row is None:
         raise HTTPException(status_code=404, detail="Application not found")
@@ -381,8 +417,12 @@ def get_application(application_id: int, db: Session = Depends(get_db)) -> dict:
 
 
 @router.patch("/applications/{application_id}", response_model=ApplicationRead)
-def update_application(application_id: int, payload: ApplicationUpdate, db: Session = Depends(get_db)) -> dict:
-    user = get_single_user(db)
+def update_application(
+    application_id: int,
+    payload: ApplicationUpdate,
+    user: User = Depends(require_user),
+    db: Session = Depends(get_db),
+) -> dict:
     row = _application_row(db, application_id, user.id)
     if row is None:
         raise HTTPException(status_code=404, detail="Application not found")
@@ -412,8 +452,11 @@ def update_application(application_id: int, payload: ApplicationUpdate, db: Sess
 
 
 @router.delete("/applications/{application_id}", response_model=ApplicationDeleteResponse)
-def delete_application(application_id: int, db: Session = Depends(get_db)) -> dict:
-    user = get_single_user(db)
+def delete_application(
+    application_id: int,
+    user: User = Depends(require_user),
+    db: Session = Depends(get_db),
+) -> dict:
     application = db.scalar(
         select(Application).where(Application.id == application_id, Application.user_id == user.id)
     )
@@ -427,8 +470,11 @@ def delete_application(application_id: int, db: Session = Depends(get_db)) -> di
 
 
 @router.get("/applications/{application_id}/events", response_model=list[ApplicationEventRead])
-def list_application_events(application_id: int, db: Session = Depends(get_db)) -> list[ApplicationEvent]:
-    user = get_single_user(db)
+def list_application_events(
+    application_id: int,
+    user: User = Depends(require_user),
+    db: Session = Depends(get_db),
+) -> list[ApplicationEvent]:
     application = db.scalar(
         select(Application).where(Application.id == application_id, Application.user_id == user.id)
     )
@@ -447,9 +493,9 @@ def list_application_events(application_id: int, db: Session = Depends(get_db)) 
 def create_application_event(
     application_id: int,
     payload: ApplicationEventCreate,
+    user: User = Depends(require_user),
     db: Session = Depends(get_db),
 ) -> ApplicationEvent:
-    user = get_single_user(db)
     application = db.scalar(
         select(Application).where(Application.id == application_id, Application.user_id == user.id)
     )

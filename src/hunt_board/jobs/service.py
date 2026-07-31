@@ -1,6 +1,6 @@
 from __future__ import annotations
 
-from sqlalchemy import and_, select
+from sqlalchemy import and_, func, select
 from sqlalchemy.orm import Session
 
 from hunt_board.db.models import Application, ApplicationStatus, DiscardedJob, JobPosting, SavedJob, Source
@@ -103,7 +103,16 @@ def job_read_payload(
 def get_job_with_user_state(db: Session, job_id: int, user_id: int | None) -> tuple | None:
     saved_join = and_(SavedJob.job_posting_id == JobPosting.id, SavedJob.user_id == user_id)
     discarded_join = and_(DiscardedJob.job_posting_id == JobPosting.id, DiscardedJob.user_id == user_id)
-    application_join = and_(Application.job_posting_id == JobPosting.id, Application.user_id == user_id)
+    latest_application_id = (
+        select(func.max(Application.id))
+        .where(
+            Application.job_posting_id == JobPosting.id,
+            Application.user_id == user_id,
+        )
+        .correlate(JobPosting)
+        .scalar_subquery()
+    )
+    application_join = Application.id == latest_application_id
     return db.execute(
         select(
             JobPosting,

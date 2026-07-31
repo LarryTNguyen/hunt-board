@@ -6,12 +6,17 @@ from fastapi import APIRouter, Depends, HTTPException
 from sqlalchemy.orm import Session
 
 from hunt_board.api.schemas import IngestRunRequest, IngestRunResponse
+from hunt_board.auth.dependencies import require_admin
 from hunt_board.core.config import get_settings
 from hunt_board.db.session import get_db
 from hunt_board.ingestion.service import IngestionService
 from hunt_board.ingestion.lock import IngestionAlreadyRunningError
 
-router = APIRouter(prefix="/api/ingest", tags=["ingestion"])
+router = APIRouter(
+    prefix="/api/ingest",
+    tags=["ingestion"],
+    dependencies=[Depends(require_admin)],
+)
 
 
 @router.post("/run", response_model=IngestRunResponse)

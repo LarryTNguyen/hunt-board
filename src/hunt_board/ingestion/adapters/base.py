@@ -196,8 +196,19 @@ class NormalizedJob:
     locations: list[dict[str, Any]] = field(default_factory=list)
 
 
+@dataclass
+class AdapterFetchResult:
+    jobs: list[NormalizedJob]
+    lifecycle_authoritative: bool = True
+    skipped_count: int = 0
+    warning_message: str | None = None
+
+
 class ATSAdapter(Protocol):
-    async def fetch_jobs(self, source: SourceConfig) -> list[NormalizedJob]:
+    async def fetch_jobs(
+        self,
+        source: SourceConfig,
+    ) -> list[NormalizedJob] | AdapterFetchResult:
         ...
 
 

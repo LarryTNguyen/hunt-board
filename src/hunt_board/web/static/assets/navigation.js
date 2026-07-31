@@ -1,18 +1,22 @@
 import { api } from './api.js?v=20260721-1';
+import { getAuthState, signOut } from './auth.js?v=20260729-1';
 
 const navItems = [
+  ['dashboard', 'Dashboard', '/app/dashboard.html'],
   ['discover', 'Discover', '/app/job-discovery.html'],
+  ['routes', 'Routes', '/app/saved-searches.html'],
   ['saved', 'Saved', '/app/saved-jobs.html'],
   ['tracker', 'Tracker', '/app/application-tracker.html'],
   ['notifications', 'Inbox', '/app/notifications.html'],
   ['preferences', 'Preferences', '/app/preferences.html'],
   ['operations', 'Operations', '/app/operations.html'],
-  ['admin', 'Review', '/app/duplicate-review.html'],
+  ['admin', 'Duplicate review', '/app/duplicate-review.html'],
 ];
 
-export function renderNavigation() {
+export async function renderNavigation() {
   const host = document.querySelector('[data-app-nav]');
   if (!host) return;
+  const auth = await getAuthState();
   const active = host.dataset.appNav;
   host.replaceChildren();
   const skip = document.createElement('a');
@@ -28,9 +32,13 @@ export function renderNavigation() {
     </a>
     <button class="menu-toggle" type="button" aria-expanded="false" aria-controls="app-navigation"><span class="sr-only">Open navigation</span>☰</button>
     <nav class="app-nav" id="app-navigation" aria-label="Product navigation"></nav>
+    <div class="account-shell" data-account-shell></div>
   </div>`;
   const nav = header.querySelector('nav');
   navItems.forEach(([key, label, href]) => {
+    const adminItem = key === 'operations' || key === 'admin';
+    if (!auth.session && key !== 'discover') return;
+    if (adminItem && auth.profile?.role !== 'admin') return;
     const link = document.createElement('a');
     link.href = href;
     if (active === key) link.setAttribute('aria-current', 'page');
@@ -44,6 +52,25 @@ export function renderNavigation() {
     }
     nav.append(link);
   });
+  const account = header.querySelector('[data-account-shell]');
+  if (auth.session) {
+    const label = auth.profile?.display_name || (auth.profile?.role === 'admin' ? 'Administrator' : 'Account');
+    account.innerHTML = `<details class="account-menu">
+      <summary>${label}</summary>
+      <div class="account-card">
+        <span>${auth.profile?.role === 'admin' ? 'Admin field pass' : 'Member field pass'}</span>
+        <button type="button" data-sign-out>Sign out</button>
+      </div>
+    </details>`;
+    const mobile = document.createElement('button');
+    mobile.type = 'button';
+    mobile.className = 'mobile-account-action';
+    mobile.dataset.signOut = '';
+    mobile.textContent = 'Sign out';
+    nav.append(mobile);
+  } else {
+    account.innerHTML = '<a class="account-sign-in" href="/app/sign-in.html">Sign in</a>';
+  }
   host.append(skip, header);
   const toggle = header.querySelector('.menu-toggle');
   toggle.addEventListener('click', () => {
@@ -51,8 +78,11 @@ export function renderNavigation() {
     toggle.setAttribute('aria-expanded', String(!open));
     nav.classList.toggle('is-open', !open);
   });
+  header.querySelectorAll('[data-sign-out]').forEach((button) => {
+    button.addEventListener('click', () => signOut());
+  });
   observePageIntro();
-  refreshUnreadCount();
+  if (auth.session) refreshUnreadCount();
 }
 
 export function decoratePageIntro() {
@@ -94,4 +124,4 @@ export async function refreshUnreadCount() {
   }
 }
 
-renderNavigation();
+void renderNavigation();

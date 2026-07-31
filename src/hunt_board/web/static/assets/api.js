@@ -15,7 +15,7 @@ export async function request(path, options = {}) {
   }
   let response;
   try {
-    response = await fetch(path, init);
+    response = await authenticatedFetch(path, init);
   } catch (error) {
     throw new ApiError('Hunt Board could not reach the server. Check that the API is running.', 0, error.message);
   }
@@ -64,4 +64,16 @@ export const api = {
   runDueSources: (dryRun = false) => request('/admin/ingestion/run', { method: 'POST', body: { dry_run: dryRun } }),
   runSource: (id, dryRun = false) => request(`/admin/ingestion/run-source/${id}?dry_run=${dryRun}`, { method: 'POST', body: {} }),
   syncSources: () => request('/admin/sources/sync-from-yaml', { method: 'POST', body: {} }),
+  invitations: () => request('/admin/invitations'),
+  createInvitation: (email) => request('/admin/invitations', { method: 'POST', body: { email } }),
+  revokeInvitation: (id) => request(`/admin/invitations/${id}/revoke`, { method: 'POST', body: {} }),
+  savedSearches: (params = {}) => request(`/saved-searches?${new URLSearchParams(Object.entries(params).filter(([, value]) => value !== '' && value !== undefined && value !== null))}`),
+  savedSearch: (id) => request(`/saved-searches/${id}`),
+  createSavedSearch: (body) => request('/saved-searches', { method: 'POST', body }),
+  updateSavedSearch: (id, body) => request(`/saved-searches/${id}`, { method: 'PATCH', body }),
+  deleteSavedSearch: (id) => request(`/saved-searches/${id}`, { method: 'DELETE' }),
+  savedSearchMatches: (id, params = {}) => request(`/saved-searches/${id}/matches?${new URLSearchParams(Object.entries(params).filter(([, value]) => value !== '' && value !== undefined && value !== null))}`),
+  markSavedSearchReviewed: (id) => request(`/saved-searches/${id}/mark-reviewed`, { method: 'POST', body: {} }),
+  dailyDashboard: () => request('/dashboard/daily'),
 };
+import { authenticatedFetch } from './auth.js?v=20260729-1';

@@ -1,6 +1,6 @@
 # Hunt Board
 
-Hunt Board is a backend-first job intelligence and personal job-search CRM. It ingests curated Greenhouse, Lever, Ashby, and explicitly configured public Workday boards. Milestone 4.1 adds complete, safety-bounded Workday Candidate Experience JSON ingestion without browser automation or authenticated Workday APIs.
+Hunt Board is a backend-first job intelligence and personal job-search CRM. It ingests curated Greenhouse, Lever, Ashby, and explicitly configured public Workday boards. Milestone 6 adds an invite-only multi-user foundation with Supabase Auth, trusted roles, PostgreSQL RLS, and protected private state without changing the safety-bounded Workday ingestion contract.
 
 ## Quick start with Docker
 
@@ -53,18 +53,35 @@ The files in `mock-designs/` are the archived static visual reference. Their sam
 preview interactions do not persist. The pages under `/app/` are the live product and read or
 write the database through the existing FastAPI routes.
 
-The normal seed command intentionally creates only the single-user defaults, statuses, and
-configured sources. To populate job data, run fixture-backed tests for development or ingest
+The normal seed command creates one deterministic local admin profile, accepted local invitation,
+defaults, statuses, and configured sources. It refuses to create an admin in production. To populate job data, run fixture-backed tests for development or ingest
 configured ATS sources with `uv run hunt-board ingest`; Milestone 3 does not silently insert
 demo records.
 
-The live discovery desk at `/app/job-discovery.html` browses the complete server-paginated feed. Its search, source/ATS/country/location/workplace/salary/age/score filters, sort, page offset, view tab, and selected job are represented in the URL, so refresh and browser back/forward preserve the route. The operations desk at `/app/operations.html` shows ingestion status, source health/policy, recent run metrics, and confirmed manual actions.
+The daily starting point is `/app/dashboard.html`. It combines ingestion freshness, recent-job totals, new saved-route matches, the application pipeline, and follow-up candidates. `/app/saved-searches.html` creates and manages reusable discovery routes. A route's `last_viewed_at` is advanced only by **Mark reviewed**; jobs with `first_seen_at` after that timestamp count as new. A never-reviewed route treats all current matches as new.
+
+The live discovery desk at `/app/job-discovery.html` browses the complete server-paginated feed. Its search, source/ATS/country/location/workplace/salary/age/score filters, sort, page offset, view tab, and selected job are represented in the URL, so refresh and browser back/forward preserve the route. Use **Save this route** to persist the current filters. The operations desk at `/app/operations.html` shows ingestion status, source health/policy, recent run metrics, and confirmed manual actions.
+
+### Saved searches and Daily Hunt API
+
+- `GET/POST /saved-searches` lists or creates routes.
+- `GET/PATCH/DELETE /saved-searches/{id}` reads, updates, or removes a route.
+- `GET /saved-searches/{id}/matches` returns the feed-shaped matches; `new_only=true` restricts results to jobs first seen after review.
+- `POST /saved-searches/{id}/mark-reviewed` advances the review timestamp.
+- `GET /dashboard/daily` returns the read-only Daily Hunt aggregate.
+
+Seed creates one idempotent default route named `Daily Hunt` using the user's minimum score threshold. Notifications remain in-app only. Milestone 5 does not add resume analysis, AI matching, or email/push delivery.
 
 ## Configuration
 
 - `DATABASE_URL`: SQLAlchemy PostgreSQL URL. The host default uses port `55432`.
 - `HUNT_BOARD_SOURCES_PATH`: YAML source registry path; defaults to `data/sources.yaml`.
-- `HUNT_BOARD_DEFAULT_USER_EMAIL`: seeded single-user admin email.
+- `HUNT_BOARD_DEFAULT_USER_EMAIL`: deterministic local development admin profile email.
+- `HUNT_BOARD_ENVIRONMENT`: `development` by default; production disables automatic admin creation.
+- `SUPABASE_URL`: public Supabase project URL used for JWKS and browser auth bootstrap.
+- `SUPABASE_ANON_KEY`: public anonymous client key; never substitute a service-role key.
+- `SUPABASE_JWT_AUDIENCE`: access-token audience; defaults to `authenticated`.
+- `SUPABASE_JWT_ISSUER`: optional issuer override; defaults to `SUPABASE_URL/auth/v1`.
 - `HUNT_BOARD_HTTP_TIMEOUT_SECONDS`: per-request ATS timeout; defaults to `10`.
 - `HUNT_BOARD_SOURCE_CONCURRENCY`: maximum ATS sources fetched at once; defaults to `5`.
 - `HUNT_BOARD_HTTP_MAX_RETRIES`: retries for timeouts, network failures, HTTP 408/429, and HTTP 5xx responses; defaults to `2`.
@@ -114,6 +131,8 @@ uv run hunt-board ingest --source example-workday
 ```
 
 Compare listing counts and sample public URLs before setting `enabled: true`. Use a conservative cadence because each scan performs sequential listing-page requests plus one bounded detail request per job. Persistent access denial, unsupported response contracts, or bot protection fail clearly; Hunt Board does not bypass them with cookies, proxies, or browser automation.
+
+If a completely enumerated Workday listing contains an individual path whose detail remains unavailable after one reconciliation, Hunt Board records a `completed_with_errors` partial result and skips that path. Complete jobs may still be upserted, but missed-run counters and closure reconciliation are suppressed for the source so a partial scan cannot deactivate jobs.
 
 ## Database and source commands
 
@@ -249,4 +268,4 @@ $env:HUNT_BOARD_TEST_POSTGRES_URL='postgresql+psycopg://hunt_board:hunt_board@lo
 uv run pytest -m postgres tests/test_milestone_four_postgres.py
 ```
 
-See [architecture](docs/architecture.md), [Milestone 2 workflows](docs/milestone-2.md), [Milestone 3 frontend](docs/milestone-3.md), [Milestone 3.5](docs/milestone-3.5.md), [Milestone 4](docs/milestone-4.md), [Milestone 4.1](docs/milestone-4.1.md), and [ingestion pipeline](docs/ingestion-pipeline.md) for design details.
+See [architecture](docs/architecture.md), [Milestone 2 workflows](docs/milestone-2.md), [Milestone 3 frontend](docs/milestone-3.md), [Milestone 3.5](docs/milestone-3.5.md), [Milestone 4](docs/milestone-4.md), [Milestone 4.1](docs/milestone-4.1.md), [Milestone 5](docs/milestone-5.md), [Milestone 6](docs/milestone-6.0.md), [authentication setup](docs/auth-setup.md), and [ingestion pipeline](docs/ingestion-pipeline.md) for design details.

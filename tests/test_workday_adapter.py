@@ -11,7 +11,12 @@ from pydantic import ValidationError
 from sqlalchemy import select
 
 from hunt_board.db.models import JobPosting, JobVersion
-from hunt_board.ingestion.adapters import ADAPTER_REGISTRY, AdapterError, WorkdayAdapter
+from hunt_board.ingestion.adapters import (
+    ADAPTER_REGISTRY,
+    AdapterError,
+    AdapterFetchResult,
+    WorkdayAdapter,
+)
 from hunt_board.ingestion.adapters.workday import parse_workday_posted_at
 from hunt_board.ingestion.service import IngestionService
 from hunt_board.ingestion.sources import SourceConfig
@@ -136,6 +141,58 @@ async def test_workday_empty_board_is_complete_success() -> None:
 
     async with httpx.AsyncClient(transport=httpx.MockTransport(handler)) as client:
         assert await WorkdayAdapter(client).fetch_jobs(source()) == []
+
+
+@pytest.mark.asyncio
+async def test_workday_accepts_zero_total_on_noninitial_nonempty_page() -> None:
+    def handler(request: httpx.Request) -> httpx.Response:
+        if request.method == "POST":
+            body = json.loads(request.content)
+            page_name = (
+                "workday_jobs_page_1.json"
+                if body["offset"] == 0
+                else "workday_jobs_page_2.json"
+            )
+            data = payload(page_name)
+            if body["offset"] > 0:
+                data["total"] = 0
+            return httpx.Response(200, json=data, request=request)
+        return normal_handler(request)
+
+    async with httpx.AsyncClient(transport=httpx.MockTransport(handler)) as client:
+        jobs = await WorkdayAdapter(client).fetch_jobs(source())
+
+    assert [job.external_job_id for job in jobs] == [
+        "0123456789abcdef0123456789abcdef",
+        "fedcba9876543210fedcba9876543210",
+    ]
+
+
+@pytest.mark.asyncio
+async def test_workday_rejects_zero_total_on_noninitial_empty_page() -> None:
+    calls = 0
+
+    def handler(request: httpx.Request) -> httpx.Response:
+        nonlocal calls
+        calls += 1
+        body = json.loads(request.content)
+        if body["offset"] == 0:
+            return httpx.Response(
+                200,
+                json=payload("workday_jobs_page_1.json"),
+                request=request,
+            )
+        return httpx.Response(
+            200,
+            json={"total": 0, "jobPostings": []},
+            request=request,
+        )
+
+    async with httpx.AsyncClient(transport=httpx.MockTransport(handler)) as client:
+        with pytest.raises(AdapterError, match="remained incomplete"):
+            await WorkdayAdapter(client).fetch_jobs(source())
+
+    assert calls == 4
 
 
 @pytest.mark.asyncio
@@ -340,7 +397,7 @@ async def test_workday_reconciles_a_withdrawn_detail() -> None:
 
 
 @pytest.mark.asyncio
-async def test_workday_still_listed_missing_detail_fails() -> None:
+async def test_workday_still_listed_missing_detail_returns_partial_result() -> None:
     def handler(request: httpx.Request) -> httpx.Response:
         if request.method == "POST":
             data = {**payload("workday_jobs_page_1.json"), "total": 1}
@@ -348,8 +405,36 @@ async def test_workday_still_listed_missing_detail_fails() -> None:
         return httpx.Response(404, request=request)
 
     async with httpx.AsyncClient(transport=httpx.MockTransport(handler)) as client:
-        with pytest.raises(AdapterError, match="still present"):
-            await WorkdayAdapter(client).fetch_jobs(source())
+        result = await WorkdayAdapter(client).fetch_jobs(source())
+
+    assert isinstance(result, AdapterFetchResult)
+    assert result.jobs == []
+    assert result.lifecycle_authoritative is False
+    assert result.skipped_count == 1
+    assert "lifecycle closure was suppressed" in (result.warning_message or "")
+
+
+@pytest.mark.asyncio
+async def test_workday_partial_result_keeps_complete_details() -> None:
+    def handler(request: httpx.Request) -> httpx.Response:
+        if request.method == "POST":
+            return normal_handler(request)
+        if "Software-Engineer" in request.url.path:
+            return httpx.Response(404, request=request)
+        return normal_handler(request)
+
+    async with httpx.AsyncClient(transport=httpx.MockTransport(handler)) as client:
+        result = await WorkdayAdapter(client).fetch_jobs(source())
+
+    assert isinstance(result, AdapterFetchResult)
+    assert [job.external_job_id for job in result.jobs] == [
+        "fedcba9876543210fedcba9876543210"
+    ]
+    assert result.lifecycle_authoritative is False
+    assert result.skipped_count == 1
+    assert "/job/Seattle-WA/Software-Engineer_REQ-123" in (
+        result.warning_message or ""
+    )
 
 
 def test_workday_relative_dates_are_conservative() -> None:

@@ -278,6 +278,7 @@ class ApplicationCreate(BaseModel):
 
     status: str | None = None
     notes: str | None = Field(default=None, max_length=20_000)
+    create_new: bool = False
 
 
 class ApplicationUpdate(BaseModel):
@@ -369,6 +370,7 @@ class SourceRunSummaryRead(BaseModel):
     unchanged_jobs: int
     closed_count: int
     duplicates_found: int
+    skipped_count: int
     error_count: int
     error_message: str | None
     duration_ms: int

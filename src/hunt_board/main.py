@@ -1,34 +1,104 @@
 from __future__ import annotations
 
+import logging
 from datetime import datetime, timedelta, timezone
 from pathlib import Path
+from time import perf_counter
 
 from fastapi import Depends, FastAPI, HTTPException, Request
+from fastapi.responses import JSONResponse
 from fastapi.staticfiles import StaticFiles
 from sqlalchemy import func, or_, select, text
 from sqlalchemy.exc import SQLAlchemyError
 from sqlalchemy.orm import Session
 
 from hunt_board.admin.api import router as admin_router
+from hunt_board.admin.metrics import router as metrics_router
 from hunt_board.api.schemas import IngestionHealthRead
 from hunt_board.api.ingest import router as ingest_router
 from hunt_board.api.jobs import router as jobs_router
 from hunt_board.api.preferences import router as preferences_router
 from hunt_board.db.session import get_db
-from hunt_board.db.models import JobPosting, ScrapeRun, Source
+from hunt_board.db.models import JobPosting, SavedSearch, ScrapeRun, Source
 from hunt_board.core.config import get_settings
+from hunt_board.core.observability import (
+    configure_logging,
+    metrics,
+    safe_correlation_id,
+)
+from hunt_board.dashboard.api import router as dashboard_router
 from hunt_board.notifications.api import router as notifications_router
+from hunt_board.searches.api import router as searches_router
 from hunt_board.tracking.api import router as tracking_router
+from hunt_board.auth.api import admin_router as auth_admin_router
+from hunt_board.auth.api import router as auth_router
 
 
 def create_app() -> FastAPI:
-    app = FastAPI(title="Hunt Board", version="0.4.1")
+    configure_logging()
+    logger = logging.getLogger("hunt_board")
+    app = FastAPI(title="Hunt Board", version="0.6.0")
+
+    @app.exception_handler(SQLAlchemyError)
+    async def database_error_handler(request: Request, _exc: SQLAlchemyError) -> JSONResponse:
+        metrics.database_error()
+        request_id = getattr(request.state, "request_id", None)
+        logger.error(
+            "database.error",
+            extra={
+                "event_name": "database.error",
+                "event_data": {
+                    "environment": get_settings().environment,
+                    "request_id": request_id,
+                    "trace_id": getattr(request.state, "trace_id", None),
+                    "route": request.url.path,
+                },
+            },
+        )
+        return JSONResponse(
+            status_code=500,
+            content={"detail": "A database error occurred", "request_id": request_id},
+        )
 
     @app.middleware("http")
-    async def prevent_stale_frontend_assets(request: Request, call_next):
+    async def request_observability(request: Request, call_next):
+        started = perf_counter()
+        request_id = safe_correlation_id(request.headers.get("X-Request-ID"))
+        trace_id = safe_correlation_id(
+            request.headers.get("X-Trace-ID") or request.headers.get("X-Correlation-ID")
+        )
+        request.state.request_id = request_id
+        request.state.trace_id = trace_id
         response = await call_next(request)
+        duration = perf_counter() - started
+        route = request.scope.get("route")
+        route_label = getattr(route, "path", "<unmatched>")
+        metrics.observe_request(request.method, route_label, response.status_code, duration)
+        response.headers["X-Request-ID"] = request_id
+        response.headers["X-Trace-ID"] = trace_id
         if request.url.path == "/app" or request.url.path.startswith("/app/"):
             response.headers["Cache-Control"] = "no-store"
+        event_name = (
+            "admin.mutation"
+            if request.url.path.startswith(("/admin/", "/api/admin/"))
+            and request.method in {"POST", "PUT", "PATCH", "DELETE"}
+            else "http.request"
+        )
+        logger.info(
+            event_name,
+            extra={
+                "event_name": event_name,
+                "event_data": {
+                    "environment": get_settings().environment,
+                    "request_id": request_id,
+                    "trace_id": trace_id,
+                    "route": route_label,
+                    "method": request.method,
+                    "status": response.status_code,
+                    "duration_ms": round(duration * 1000, 3),
+                },
+            },
+        )
         return response
 
     @app.get("/health")
@@ -54,6 +124,7 @@ def create_app() -> FastAPI:
             db.execute(select(JobPosting.id).limit(1))
             db.execute(select(Source.id).limit(1))
             db.execute(select(ScrapeRun.id).limit(1))
+            db.execute(select(SavedSearch.id).limit(1))
             if db.get_bind().dialect.name == "postgresql":
                 db.execute(text("SELECT search_vector FROM job_postings LIMIT 0"))
         except SQLAlchemyError as exc:
@@ -125,9 +196,17 @@ def create_app() -> FastAPI:
     app.include_router(tracking_router, prefix="/api", include_in_schema=False)
     app.include_router(notifications_router)
     app.include_router(notifications_router, prefix="/api", include_in_schema=False)
+    app.include_router(searches_router)
+    app.include_router(searches_router, prefix="/api", include_in_schema=False)
+    app.include_router(dashboard_router)
+    app.include_router(dashboard_router, prefix="/api", include_in_schema=False)
+    app.include_router(auth_router)
+    app.include_router(auth_admin_router)
+    app.include_router(auth_admin_router, prefix="/api", include_in_schema=False)
     app.include_router(ingest_router)
     app.include_router(admin_router)
     app.include_router(admin_router, prefix="/api", include_in_schema=False)
+    app.include_router(metrics_router)
     web_root = Path(__file__).parent / "web" / "static"
     app.mount("/app", StaticFiles(directory=web_root, html=True), name="app")
     return app

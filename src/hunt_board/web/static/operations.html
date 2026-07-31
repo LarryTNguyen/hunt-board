@@ -19,6 +19,19 @@
       </div>
     </div>
     <div class="page-shell operations-shell">
+      <section class="invitation-console" aria-labelledby="invitation-title">
+        <div>
+          <p class="utility-label">Beta access ledger</p>
+          <h2 id="invitation-title">Invitations</h2>
+          <p>Access activates only when the provider email exactly matches an active invitation.</p>
+        </div>
+        <form data-invitation-form>
+          <label class="control-field"><span>Email to invite</span><input name="email" type="email" autocomplete="off" required></label>
+          <button class="button button-primary" type="submit">Create invitation</button>
+        </form>
+        <div class="invitation-list" data-invitation-list aria-live="polite"></div>
+      </section>
+
       <section aria-labelledby="system-status-title">
         <div class="section-heading"><div><p class="utility-label">Current field conditions</p><h2 id="system-status-title">System status</h2></div><button class="button button-quiet" type="button" data-refresh data-operation-action>Refresh status</button></div>
         <div class="operations-status-grid" data-system-status aria-live="polite" aria-busy="true"></div>

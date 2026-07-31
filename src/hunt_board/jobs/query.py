@@ -56,7 +56,16 @@ class JobQueryFilters:
 def user_state_statement(user_id: int | None, *columns: Any) -> Select:
     saved_join = and_(SavedJob.job_posting_id == JobPosting.id, SavedJob.user_id == user_id)
     discarded_join = and_(DiscardedJob.job_posting_id == JobPosting.id, DiscardedJob.user_id == user_id)
-    application_join = and_(Application.job_posting_id == JobPosting.id, Application.user_id == user_id)
+    latest_application_id = (
+        select(func.max(Application.id))
+        .where(
+            Application.job_posting_id == JobPosting.id,
+            Application.user_id == user_id,
+        )
+        .correlate(JobPosting)
+        .scalar_subquery()
+    )
+    application_join = Application.id == latest_application_id
     return (
         select(*columns)
         .select_from(JobPosting)

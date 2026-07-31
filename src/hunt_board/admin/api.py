@@ -18,6 +18,7 @@ from hunt_board.api.schemas import (
     SourceRead,
     SourceSyncRead,
 )
+from hunt_board.auth.dependencies import require_admin
 from hunt_board.core.config import Settings, get_settings
 from hunt_board.db.models import DuplicateReview, JobPosting, ScrapeRun, ScrapeSourceRun, Source
 from hunt_board.db.session import get_db
@@ -25,7 +26,11 @@ from hunt_board.ingestion.registry import sync_sources_from_yaml
 from hunt_board.ingestion.lock import IngestionAlreadyRunningError
 from hunt_board.ingestion.service import IngestionService
 
-router = APIRouter(prefix="/admin", tags=["admin"])
+router = APIRouter(
+    prefix="/admin",
+    tags=["admin"],
+    dependencies=[Depends(require_admin)],
+)
 
 
 @router.get("/operations", response_model=OperationsRead)

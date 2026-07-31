@@ -9,8 +9,30 @@ const sourceCount = document.querySelector('[data-source-count]');
 const runList = document.querySelector('[data-run-list]');
 const runDetail = document.querySelector('[data-run-detail]');
 const message = document.querySelector('[data-operation-message]');
+const invitationList = document.querySelector('[data-invitation-list]');
+const invitationForm = document.querySelector('[data-invitation-form]');
 let operations = null;
 let selectedRunId = null;
+
+function renderInvitations(items) {
+  if (!items.length) {
+    renderEmpty(invitationList, 'No invitations yet', 'Create the first exact-email beta invitation.');
+    return;
+  }
+  invitationList.innerHTML = items.map((item) => `<article class="invitation-row">
+    <div><strong>${esc(item.normalized_email)}</strong><small>${esc(label(item.status))} · ${esc(absoluteDate(item.created_at))}</small></div>
+    ${item.status === 'pending' ? `<button class="button button-quiet" type="button" data-revoke-invitation="${item.id}">Revoke</button>` : ''}
+  </article>`).join('');
+}
+
+async function loadInvitations() {
+  loading(invitationList, 'Reading invitation ledger…');
+  try {
+    renderInvitations(await api.invitations());
+  } catch (error) {
+    renderError(invitationList, error, loadInvitations);
+  }
+}
 
 function tone(status) {
   if (['completed', 'healthy'].includes(status)) return 'positive';
@@ -134,5 +156,34 @@ runList.addEventListener('click', (event) => {
   const button = event.target.closest('[data-run-id]');
   if (button) selectRun(Number(button.dataset.runId));
 });
+invitationForm.addEventListener('submit', async (event) => {
+  event.preventDefault();
+  const button = invitationForm.querySelector('button');
+  button.disabled = true;
+  try {
+    await api.createInvitation(new FormData(invitationForm).get('email'));
+    invitationForm.reset();
+    makeToast('Invitation created.');
+    await loadInvitations();
+  } catch (error) {
+    makeToast(error.message, 'error');
+  } finally {
+    button.disabled = false;
+  }
+});
+invitationList.addEventListener('click', async (event) => {
+  const button = event.target.closest('[data-revoke-invitation]');
+  if (!button || !window.confirm('Revoke this pending invitation?')) return;
+  button.disabled = true;
+  try {
+    await api.revokeInvitation(button.dataset.revokeInvitation);
+    makeToast('Invitation revoked.');
+    await loadInvitations();
+  } catch (error) {
+    makeToast(error.message, 'error');
+    button.disabled = false;
+  }
+});
 
 loadOperations();
+loadInvitations();

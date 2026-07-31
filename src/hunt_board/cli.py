@@ -18,7 +18,7 @@ from hunt_board.ingestion.scheduler import run_scheduler
 def build_parser() -> argparse.ArgumentParser:
     parser = argparse.ArgumentParser(prog="hunt-board")
     commands = parser.add_subparsers(dest="command", required=True)
-    commands.add_parser("seed", help="Seed the MVP user, preferences, statuses, and sources")
+    commands.add_parser("seed", help="Seed the MVP user, preferences, statuses, saved route, and sources")
     commands.add_parser("sync-sources", help="Synchronize job sources from YAML")
     ingest = commands.add_parser("ingest", help="Run ATS ingestion")
     ingest.add_argument("--source", action="append", dest="sources")
@@ -54,7 +54,14 @@ def main() -> None:
         else:
             with SessionLocal() as db:
                 if args.command == "seed":
-                    result = asdict(seed_milestone_one(db, settings.default_user_email, str(settings.sources_path)))
+                    result = asdict(
+                        seed_milestone_one(
+                            db,
+                            settings.default_user_email,
+                            str(settings.sources_path),
+                            environment=settings.environment,
+                        )
+                    )
                 elif args.command == "sync-sources":
                     result = asdict(sync_sources_from_yaml(db, str(settings.sources_path)))
                 else:

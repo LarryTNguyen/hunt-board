@@ -7,7 +7,8 @@ from fastapi import APIRouter, Depends, HTTPException, Query
 from sqlalchemy.orm import Session
 
 from hunt_board.api.schemas import JobFeedRead, JobPostingRead
-from hunt_board.auth.single_user import get_single_user
+from hunt_board.auth.dependencies import optional_user
+from hunt_board.db.models import User
 from hunt_board.db.session import get_db
 from hunt_board.jobs.query import (
     JobQueryFilters,
@@ -50,9 +51,11 @@ def list_jobs(
     sort_order: SortOrder = "desc",
     limit: int = Query(default=50, ge=1, le=200),
     offset: int = Query(default=0, ge=0),
+    user: User | None = Depends(optional_user),
     db: Session = Depends(get_db),
 ) -> list[dict]:
-    user = get_single_user(db, required=False)
+    if user is None and (saved is not None or discarded or application_status):
+        raise HTTPException(status_code=401, detail="Authentication is required for private job filters")
     filters = JobQueryFilters(
         active=active,
         company=company,
@@ -103,9 +106,11 @@ def discovery_feed(
     limit: int = Query(default=25, ge=1, le=100),
     offset: int = Query(default=0, ge=0),
     include_duplicates: bool = False,
+    user: User | None = Depends(optional_user),
     db: Session = Depends(get_db),
 ) -> dict:
-    user = get_single_user(db, required=False)
+    if user is None and (saved is not None or discarded or application_status):
+        raise HTTPException(status_code=401, detail="Authentication is required for private job filters")
     user_id = user.id if user else None
     filters = JobQueryFilters(
         active=active,
@@ -142,8 +147,11 @@ def discovery_feed(
 
 
 @router.get("/{job_id}", response_model=JobPostingRead)
-def get_job(job_id: int, db: Session = Depends(get_db)) -> dict:
-    user = get_single_user(db, required=False)
+def get_job(
+    job_id: int,
+    user: User | None = Depends(optional_user),
+    db: Session = Depends(get_db),
+) -> dict:
     row = get_job_with_user_state(db, job_id, user.id if user else None)
     if row is None:
         raise HTTPException(status_code=404, detail="Job not found")

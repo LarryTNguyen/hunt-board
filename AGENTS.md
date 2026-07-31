@@ -4,7 +4,7 @@
 Hunt Board is a backend-first job intelligence system. The MVP is a single-user application that ingests jobs from curated ATS sources, stores normalized job records plus raw JSON, dedupes/repost-detects conservatively, ranks jobs against user preferences, exposes API endpoints, and records scrape run metrics.
 
 ## Current milestone
-Milestones 1-4 are implemented. Milestone 4.1 is the active focused source-expansion scope: production-quality ingestion from explicitly configured public Workday Candidate Experience JSON boards, with complete pagination, bounded detail concurrency, withdrawal reconciliation, structured locations, and the existing lifecycle safety boundary.
+Milestones 1-5 are implemented. Milestone 5 adds persisted saved searches and the Daily Hunt dashboard while preserving the Milestone 4.1 Workday safety boundary. Saved-search matching must continue to reuse the central discovery query path, and review state is based on `first_seen_at`.
 
 Do not add authenticated Workday APIs, automatic board discovery, browser automation, a scheduler inside FastAPI, task queues, external search infrastructure, multi-user authentication, resume analysis, or delivery notifications unless explicitly asked.
 
