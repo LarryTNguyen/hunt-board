@@ -1,6 +1,7 @@
 from __future__ import annotations
 
 from datetime import datetime, timezone
+import logging
 
 from fastapi import APIRouter, Depends, HTTPException, Query, Response
 from sqlalchemy import func, select, update
@@ -12,6 +13,8 @@ from hunt_board.db.models import JobPosting, SavedSearch, User
 from hunt_board.db.session import get_db
 from hunt_board.jobs.query import apply_job_sort, count_jobs, feed_facets
 from hunt_board.jobs.service import job_read_payload
+from hunt_board.jobs.relaxation import execute_with_relaxation
+from hunt_board.core.observability import metrics
 from hunt_board.searches.schemas import (
     SavedSearchCreate,
     SavedSearchDeleteResponse,
@@ -29,6 +32,14 @@ from hunt_board.searches.service import (
 
 
 router = APIRouter(prefix="/saved-searches", tags=["saved searches"])
+logger = logging.getLogger("hunt_board")
+
+
+def _log_mutation(action: str, saved_search_id: int, user_id: int) -> None:
+    logger.info(
+        "saved_search.mutated",
+        extra={"event_name": "saved_search.mutated", "event_data": {"action": action, "saved_search_id": saved_search_id, "user_id": user_id}},
+    )
 
 
 def _owned_search(db: Session, saved_search_id: int, user_id: int) -> SavedSearch:
@@ -111,7 +122,10 @@ def create_saved_search(
     db: Session = Depends(get_db),
 ) -> dict:
     _ensure_unique_name(db, user.id, payload.name)
-    if payload.is_default:
+    make_default = payload.is_default or db.scalar(
+        select(SavedSearch.id).where(SavedSearch.user_id == user.id, SavedSearch.is_default.is_(True))
+    ) is None
+    if make_default:
         _unset_other_defaults(db, user.id)
     saved_search = SavedSearch(
         user_id=user.id,
@@ -120,7 +134,7 @@ def create_saved_search(
         filters_json=payload.filters.model_dump(exclude_none=True),
         sort_by=payload.sort_by,
         sort_order=payload.sort_order,
-        is_default=payload.is_default,
+        is_default=make_default,
         is_active=payload.is_active,
         notify_on_new_matches=payload.notify_on_new_matches,
     )
@@ -131,6 +145,8 @@ def create_saved_search(
         db.rollback()
         raise HTTPException(status_code=409, detail="A saved search with this name already exists") from exc
     db.refresh(saved_search)
+    metrics.observe_saved_search("create")
+    _log_mutation("create", saved_search.id, user.id)
     return saved_search_payload(db, saved_search, user.id)
 
 
@@ -175,7 +191,18 @@ def update_saved_search(
     if "is_default" in fields:
         if payload.is_default:
             _unset_other_defaults(db, user.id, saved_search.id)
-        saved_search.is_default = payload.is_default
+            saved_search.is_default = True
+        elif saved_search.is_default:
+            replacement = db.scalar(
+                select(SavedSearch)
+                .where(SavedSearch.user_id == user.id, SavedSearch.id != saved_search.id)
+                .order_by(SavedSearch.is_active.desc(), SavedSearch.updated_at.desc())
+                .limit(1)
+            )
+            if replacement is None:
+                raise HTTPException(status_code=409, detail="At least one default saved search is required")
+            replacement.is_default = True
+            saved_search.is_default = False
     if payload.reset_reviewed:
         saved_search.last_viewed_at = None
     try:
@@ -184,6 +211,8 @@ def update_saved_search(
         db.rollback()
         raise HTTPException(status_code=409, detail="A saved search with this name already exists") from exc
     db.refresh(saved_search)
+    metrics.observe_saved_search("update")
+    _log_mutation("update", saved_search.id, user.id)
     return saved_search_payload(db, saved_search, user.id)
 
 
@@ -194,8 +223,20 @@ def delete_saved_search(
     db: Session = Depends(get_db),
 ) -> dict:
     saved_search = _owned_search(db, saved_search_id, user.id)
+    if saved_search.is_default:
+        replacement = db.scalar(
+            select(SavedSearch)
+            .where(SavedSearch.user_id == user.id, SavedSearch.id != saved_search.id)
+            .order_by(SavedSearch.is_active.desc(), SavedSearch.updated_at.desc())
+            .limit(1)
+        )
+        if replacement is None:
+            raise HTTPException(status_code=409, detail="At least one default saved search is required")
+        replacement.is_default = True
     db.delete(saved_search)
     db.commit()
+    metrics.observe_saved_search("delete")
+    _log_mutation("delete", saved_search_id, user.id)
     return {"saved_search_id": saved_search_id, "removed": True}
 
 
@@ -205,6 +246,8 @@ def saved_search_matches(
     limit: int = Query(default=25, ge=1, le=100),
     offset: int = Query(default=0, ge=0),
     new_only: bool = False,
+    relax: bool = False,
+    minimum_results: int = Query(default=10, ge=1, le=100),
     user: User = Depends(require_user),
     db: Session = Depends(get_db),
 ) -> dict:
@@ -220,21 +263,48 @@ def saved_search_matches(
             ),
         )
     )
-    statement, relevance, _ = match_statement(
+    statement, relevance, filters = match_statement(
         db, saved_search, user.id, new_only=new_only
     )
-    total = count_jobs(db, statement)
+    strict_total = count_jobs(db, statement)
+    relaxed_filters: list[str] = []
+    if relax and not new_only:
+        execution = execute_with_relaxation(
+            db, user.id, filters, minimum_results=minimum_results, kind="saved_search"
+        )
+        statement = execution.final_statement
+        relevance = execution.relevance
+        filters = execution.final_filters
+        total = execution.final_total
+        strict_total = execution.strict_total
+        relaxed_filters = list(execution.relaxed_filters)
+    else:
+        total = strict_total
+    strict_ids = set(
+        db.scalars(
+            match_statement(db, saved_search, user.id, new_only=new_only)[0]
+            .with_only_columns(JobPosting.id)
+            .order_by(None)
+        ).all()
+    ) if relaxed_filters else set()
     rows = db.execute(
         apply_job_sort(
             statement,
             saved_search.sort_by,
             saved_search.sort_order,
             relevance,
+            filters,
         )
         .offset(offset)
         .limit(limit)
     ).all()
-    items = [job_read_payload(*row) for row in rows]
+    items = []
+    for row in rows:
+        payload = job_read_payload(*row)
+        if relaxed_filters and payload["id"] not in strict_ids:
+            payload["match_type"] = "relaxed"
+            payload["relaxed_filters"] = relaxed_filters
+        items.append(payload)
     return {
         "saved_search": {
             "id": saved_search.id,
@@ -249,6 +319,13 @@ def saved_search_matches(
         "has_more": offset + len(items) < total,
         "generated_at": datetime.now(timezone.utc),
         "facets": feed_facets(db, user.id, filters),
+        "strict_total": strict_total,
+        "relaxed_total": max(total - strict_total, 0),
+        "relaxed_filters": relaxed_filters,
+        "relaxation_notice": (
+            f"Broadened results by relaxing: {', '.join(relaxed_filters)}. Exclusions remain enforced."
+            if relaxed_filters else None
+        ),
     }
 
 
@@ -265,6 +342,8 @@ def mark_saved_search_reviewed(
     saved_search.last_viewed_at = datetime.now(timezone.utc)
     db.commit()
     db.refresh(saved_search)
+    metrics.observe_saved_search("mark_reviewed")
+    _log_mutation("mark_reviewed", saved_search.id, user.id)
     match_count, new_count = saved_search_counts(db, saved_search, user.id)
     return {
         "saved_search_id": saved_search.id,

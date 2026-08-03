@@ -40,6 +40,9 @@ def job_summary(job: JobPosting, source: Source | None = None) -> dict:
         "duplicate_status": job.duplicate_status,
         "duplicate_of_job_id": job.duplicate_of_job_id,
         "reposted_at": job.reposted_at,
+        "job_family_slug": job.job_family_slug,
+        "sponsorship_status": job.sponsorship_status,
+        "remote_scope": job.remote_scope,
     }
 
 
@@ -100,6 +103,13 @@ def job_read_payload(
         "application_status": application_status,
         "is_seen": seen_at is not None,
         "seen_at": seen_at,
+        "job_family_slug": job.job_family_slug,
+        "classification_confidence": job.classification_confidence,
+        "classification_method": job.classification_method,
+        "classification_reason": job.classification_reason,
+        "classification_overridden_at": job.classification_overridden_at,
+        "sponsorship_status": job.sponsorship_status,
+        "remote_scope": job.remote_scope,
     }
 
 
@@ -112,6 +122,7 @@ def get_job_with_user_state(db: Session, job_id: int, user_id: int | None) -> tu
         .where(
             Application.job_posting_id == JobPosting.id,
             Application.user_id == user_id,
+            Application.deleted_at.is_(None),
         )
         .correlate(JobPosting)
         .scalar_subquery()

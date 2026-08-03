@@ -13,6 +13,7 @@ from hunt_board.ingestion.registry import sync_sources_from_yaml
 from hunt_board.ingestion.service import IngestionService
 from hunt_board.ingestion.retention import purge_expired_raw_payloads
 from hunt_board.ingestion.scheduler import run_scheduler
+from hunt_board.jobs.classification_service import coverage_report, reclassify_jobs
 
 
 def build_parser() -> argparse.ArgumentParser:
@@ -26,6 +27,9 @@ def build_parser() -> argparse.ArgumentParser:
     commands.add_parser("scheduler", help="Run due-source ingestion on a separate process interval")
     purge = commands.add_parser("purge-expired-raw", help="Purge expired ATS raw payloads")
     purge.add_argument("--dry-run", action="store_true")
+    reclassify = commands.add_parser("reclassify-jobs", help="Reclassify catalog jobs while preserving admin overrides")
+    reclassify.add_argument("--replace-overrides", action="store_true")
+    commands.add_parser("coverage-report", help="Summarize active jobs by family, ATS, and company")
     return parser
 
 
@@ -64,6 +68,10 @@ def main() -> None:
                     )
                 elif args.command == "sync-sources":
                     result = asdict(sync_sources_from_yaml(db, str(settings.sources_path)))
+                elif args.command == "reclassify-jobs":
+                    result = asdict(reclassify_jobs(db, include_overrides=args.replace_overrides))
+                elif args.command == "coverage-report":
+                    result = coverage_report(db)
                 else:
                     result = asdict(purge_expired_raw_payloads(db, dry_run=args.dry_run))
     except KeyboardInterrupt:

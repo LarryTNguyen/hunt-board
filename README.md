@@ -1,6 +1,6 @@
 # Hunt Board
 
-Hunt Board is a backend-first job intelligence and personal job-search CRM. It ingests curated Greenhouse, Lever, Ashby, and explicitly configured public Workday boards. Milestone 6 adds an invite-only multi-user foundation with Supabase Auth, trusted roles, PostgreSQL RLS, and protected private state without changing the safety-bounded Workday ingestion contract.
+Hunt Board is a backend-first job intelligence and personal job-search CRM. It ingests curated Greenhouse, Lever, Ashby, and explicitly configured public Workday boards. Milestone 6.1 adds a fixed 13-family taxonomy, deterministic cross-industry classification, optional onboarding, generalized routes, transparent relaxation, private manual jobs, standard reporting stages, and 30-day Recently Deleted while preserving Supabase Auth, PostgreSQL RLS, and the safety-bounded Workday contract.
 
 ## Quick start with Docker
 
@@ -61,6 +61,8 @@ demo records.
 The daily starting point is `/app/dashboard.html`. It combines recent-job totals, new saved-route matches, the application pipeline, and follow-up candidates. `/app/saved-searches.html` creates and manages reusable discovery routes. A route's `last_viewed_at` is advanced only by **Mark reviewed**; jobs with `first_seen_at` after that timestamp count as new. A never-reviewed route treats all current matches as new.
 
 The live discovery desk at `/app/job-discovery.html` browses the complete server-paginated feed. Its search, source/ATS/country/location/workplace/salary/age/score filters, sort, page offset, view tab, and selected job are represented in the URL, so refresh and browser back/forward preserve the route. Opening a job's observation drawer calls `POST /jobs/{job_id}/seen`; the user-scoped `seen_at` marker changes New to Seen without requiring a save, application, or full-dossier visit. Use **Save this route** to persist the current filters. The operations desk at `/app/operations.html` shows ingestion status, source health/policy, recent run metrics, and confirmed manual actions.
+
+Milestone 6.1 also supports fixed job families, desired titles, include/exclude terms and countries, employment type, sponsorship when known, salary floors, and excluded companies. The live UI requests controlled relaxation and labels broadened results; API clients opt in with `relax=true`. See `docs/milestone-6.1.md`.
 
 ### Saved searches and Daily Hunt API
 
@@ -125,6 +127,8 @@ Synchronize and stage rollout with two dry runs:
 
 ```powershell
 uv run hunt-board sync-sources
+uv run hunt-board reclassify-jobs
+uv run hunt-board coverage-report
 uv run hunt-board ingest --source example-workday --dry-run
 uv run hunt-board ingest --source example-workday --dry-run
 uv run hunt-board ingest --source example-workday
@@ -177,14 +181,15 @@ uv run hunt-board purge-expired-raw
 ## API surface
 
 - `GET /health`, `GET /health/db`, `GET /health/live`, `GET /health/ready`, and `GET /health/ingestion`
-- `GET /jobs` and `GET /jobs/{job_id}`
+- `GET /public/jobs` for a limited safe sample; authenticated `GET /jobs` and `GET /jobs/{job_id}` retain compatibility
 - `GET /jobs/feed` for typed discovery items, total, pagination metadata, and self-excluding facets
 - `GET/PATCH /me/preferences` and `POST /me/preferences/rescore`
 - `GET /saved-jobs`, `POST/DELETE /jobs/{job_id}/save`, and `PATCH /saved-jobs/{saved_job_id}`
 - `GET /discarded-jobs` and `POST/DELETE /jobs/{job_id}/discard`
-- `GET /application-statuses`
+- `GET/POST /application-statuses` (custom stages require a standard category)
 - `GET /applications`, `POST /jobs/{job_id}/applications`, and `GET/PATCH /applications/{application_id}`
-- `DELETE /applications/{application_id}` to remove an accidentally tracked application and its events
+- `POST /manual-jobs` to create a private job/application transaction
+- `DELETE /applications/{application_id}` to enter Recently Deleted, plus `/restore` and `/permanent`
 - `GET/POST /applications/{application_id}/events`
 - `GET /notifications`, `PATCH /notifications/{notification_id}/read`, and `POST /notifications/read-all`
 - `GET /admin/sources`
@@ -195,6 +200,7 @@ uv run hunt-board purge-expired-raw
 - `POST /admin/ingestion/run-source/{source_id}`
 - `GET /admin/duplicates`
 - `PATCH /admin/duplicates/{duplicate_review_id}`
+- `PATCH /admin/jobs/{job_id}/classification` and `GET /admin/coverage`
 
 Legacy `/api/jobs`, `/api/admin/*`, and `/api/ingest/run` paths remain available.
 

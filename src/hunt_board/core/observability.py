@@ -6,6 +6,7 @@ import re
 import threading
 from collections import Counter, defaultdict
 from contextlib import contextmanager
+from contextvars import ContextVar
 from datetime import datetime, timezone
 from time import perf_counter
 from typing import Any, Iterator
@@ -26,8 +27,27 @@ SENSITIVE_KEYS = {
     "notes",
     "body",
     "magic_link",
+    "q",
+    "query",
+    "search",
+    "keyword",
+    "keywords",
+    "include_keywords",
+    "exclude_keywords",
+    "location",
+    "locations",
+    "company",
+    "company_name",
+    "job_title",
+    "title",
+    "link",
+    "link_url",
+    "description",
+    "description_text",
 }
 SAFE_ID = re.compile(r"^[A-Za-z0-9._:-]{1,64}$")
+request_id_context: ContextVar[str | None] = ContextVar("hunt_board_request_id", default=None)
+trace_id_context: ContextVar[str | None] = ContextVar("hunt_board_trace_id", default=None)
 
 
 def sanitized(value: Any, *, key: str | None = None) -> Any:
@@ -51,6 +71,10 @@ class StructuredFormatter(logging.Formatter):
             "event_name": getattr(record, "event_name", record.getMessage()),
         }
         event.update(sanitized(getattr(record, "event_data", {})))
+        if "request_id" not in event and request_id_context.get() is not None:
+            event["request_id"] = request_id_context.get()
+        if "trace_id" not in event and trace_id_context.get() is not None:
+            event["trace_id"] = trace_id_context.get()
         return json.dumps(event, separators=(",", ":"), default=str)
 
 
@@ -80,6 +104,13 @@ class MetricsRegistry:
         self.auth: Counter[tuple[str, str]] = Counter()
         self.authorization_denials: Counter[str] = Counter()
         self.database_errors = 0
+        self.searches: Counter[str] = Counter()
+        self.relaxations: Counter[str] = Counter()
+        self.saved_search_actions: Counter[str] = Counter()
+        self.application_actions: Counter[str] = Counter()
+        self.classifications: Counter[tuple[str, str, str]] = Counter()
+        self.query_duration: defaultdict[str, float] = defaultdict(float)
+        self.query_results: Counter[str] = Counter()
 
     def observe_request(self, method: str, route: str, status_code: int, duration: float) -> None:
         status_class = f"{status_code // 100}xx"
@@ -100,7 +131,39 @@ class MetricsRegistry:
         with self._lock:
             self.database_errors += 1
 
-    def render(self, *, active_profiles: int, deactivated_profiles: int, invitations: dict[str, int]) -> str:
+    def observe_search(self, kind: str, duration: float, result_count: int) -> None:
+        bucket = "0" if result_count == 0 else "1-9" if result_count < 10 else "10-49" if result_count < 50 else "50+"
+        with self._lock:
+            self.searches[kind] += 1
+            self.query_duration[kind] += duration
+            self.query_results[bucket] += 1
+
+    def observe_relaxation(self, step: str) -> None:
+        with self._lock:
+            self.relaxations[step] += 1
+
+    def observe_saved_search(self, action: str) -> None:
+        with self._lock:
+            self.saved_search_actions[action] += 1
+
+    def observe_application(self, action: str) -> None:
+        with self._lock:
+            self.application_actions[action] += 1
+
+    def observe_classification(self, family: str, method: str, confidence_bucket: str) -> None:
+        with self._lock:
+            self.classifications[(family, method, confidence_bucket)] += 1
+
+    def render(
+        self,
+        *,
+        active_profiles: int,
+        deactivated_profiles: int,
+        invitations: dict[str, int],
+        classification_inventory: list[tuple[str, str, str, int]] | None = None,
+        classification_overrides: int = 0,
+        other_rate: float = 0.0,
+    ) -> str:
         lines = [
             "# HELP hunt_board_requests_total HTTP requests by bounded route and status class.",
             "# TYPE hunt_board_requests_total counter",
@@ -133,6 +196,21 @@ class MetricsRegistry:
                     f'hunt_board_authorization_denials_total{{category="{category}"}} {count}'
                 )
             lines.append(f"hunt_board_database_errors_total {self.database_errors}")
+            for kind, count in sorted(self.searches.items()):
+                lines.append(f'hunt_board_searches_total{{kind="{kind}"}} {count}')
+            for step, count in sorted(self.relaxations.items()):
+                lines.append(f'hunt_board_relaxation_steps_total{{step="{step}"}} {count}')
+            for action, count in sorted(self.saved_search_actions.items()):
+                lines.append(f'hunt_board_saved_search_actions_total{{action="{action}"}} {count}')
+            for action, count in sorted(self.application_actions.items()):
+                lines.append(f'hunt_board_application_actions_total{{action="{action}"}} {count}')
+            for (family, method, confidence), count in sorted(self.classifications.items()):
+                labels = f'family="{family}",method="{method}",confidence="{confidence}"'
+                lines.append(f"hunt_board_classifications_total{{{labels}}} {count}")
+            for kind, duration in sorted(self.query_duration.items()):
+                lines.append(f'hunt_board_query_duration_seconds_total{{kind="{kind}"}} {duration:.6f}')
+            for bucket, count in sorted(self.query_results.items()):
+                lines.append(f'hunt_board_query_results_total{{bucket="{bucket}"}} {count}')
         lines.extend(
             [
                 f'hunt_board_profiles{{status="active"}} {active_profiles}',
@@ -143,6 +221,11 @@ class MetricsRegistry:
             lines.append(
                 f'hunt_board_invitations_total{{status="{status}"}} {invitations.get(status, 0)}'
             )
+        for family, method, confidence, count in classification_inventory or []:
+            labels = f'family="{family}",method="{method}",confidence="{confidence}"'
+            lines.append(f"hunt_board_jobs{{{labels}}} {count}")
+        lines.append(f"hunt_board_classification_overrides {classification_overrides}")
+        lines.append(f"hunt_board_other_rate_percent {other_rate:.2f}")
         return "\n".join(lines) + "\n"
 
 

@@ -18,14 +18,18 @@ const pageSummary = document.querySelector('[data-page-summary]');
 const previousButton = document.querySelector('[data-previous]');
 const nextButton = document.querySelector('[data-next]');
 const saveRouteButton = document.querySelector('[data-save-route]');
+const relaxation = document.querySelector('[data-relaxation]');
 const controls = {
   q: document.querySelector('[data-search]'),
+  family: document.querySelector('[data-family]'),
   source: document.querySelector('[data-source]'),
   ats: document.querySelector('[data-ats]'),
   country: document.querySelector('[data-country]'),
   location: document.querySelector('[data-location]'),
   workplace: document.querySelector('[data-workplace]'),
   salary: document.querySelector('[data-salary]'),
+  minSalary: document.querySelector('[data-min-salary]'),
+  employment: document.querySelector('[data-employment]'),
   posted: document.querySelector('[data-posted]'),
   score: document.querySelector('[data-score]'),
   sort: document.querySelector('[data-sort]'),
@@ -53,12 +57,15 @@ function readState() {
   const requestedSort = params.get('sort');
   return {
     q,
+    family: (params.get('family') || '').trim(),
     source: (params.get('source') || '').trim(),
     ats: (params.get('ats') || '').trim().toLowerCase(),
     country: (params.get('country') || '').trim(),
     location: (params.get('location') || '').trim(),
     workplace: (params.get('workplace') || '').trim(),
     salary: salaryValues.has(params.get('salary')) ? params.get('salary') : '',
+    minSalary: nonnegativeInteger(params.get('minSalary')) || '',
+    employment: (params.get('employment') || '').trim(),
     posted: postedValues.has(params.get('posted')) ? params.get('posted') : '',
     score: scoreValues.has(params.get('score')) ? params.get('score') : '',
     sort: sorts.has(requestedSort) ? requestedSort : (q ? 'relevance:desc' : 'ranking_score:desc'),
@@ -128,6 +135,12 @@ function feedParams() {
     application_state: 'none',
     discarded: false,
     include_duplicates: false,
+    job_families: currentState.family,
+    employment_types: currentState.employment,
+    min_salary: currentState.minSalary,
+    relax: true,
+    minimum_results: 10,
+    use_preferences: true,
   };
   if (currentState.tab === 'new') params.saved = false;
   if (currentState.tab === 'saved') params.saved = true;
@@ -157,6 +170,9 @@ function savedRoutePayload() {
     discarded: params.discarded ?? false,
     application_state: params.application_state,
     include_duplicates: params.include_duplicates,
+    job_families: params.job_families ? [params.job_families] : [],
+    employment_types: params.employment_types ? [params.employment_types] : [],
+    min_salary: params.min_salary ? Number(params.min_salary) : null,
   };
   Object.keys(filters).forEach((key) => { if (filters[key] === null) delete filters[key]; });
   return { filters, sort_by: params.sort_by, sort_order: params.sort_order };
@@ -210,7 +226,7 @@ function renderRows() {
     row.classList.toggle('is-selected', currentState.job === job.id);
     row.setAttribute('aria-label', `Open ${job.title} at ${job.company_name}`);
     row.innerHTML = `<td><span class="status ${stateTone(job)}">${esc(currentState.tab === 'discarded' ? 'Hidden' : stateLabel(job))}</span></td>
-      <td><span class="ledger-title">${esc(job.title)}</span><span class="ledger-submeta">${esc(job.department || job.employment_type || 'General')}</span></td>
+      <td><span class="ledger-title">${esc(job.title)}</span><span class="ledger-submeta">${esc(label(job.job_family_slug))}${job.match_type === 'relaxed' ? ' · Broadened' : ''}</span></td>
       <td><span class="company-lockup company-lockup-compact">${companyMark(job.company_name, job.company_logo_url)}<span>${esc(job.company_name)}</span></span></td><td>${esc(locationSummary(job))}</td>
       <td>${esc(country(job))}</td><td class="salary-cell">${esc(salary(job))}</td>
       <td><span class="source-tag">${esc(job.source?.ats || job.source_slug)}</span></td><td><span class="match-score">${score(job.ranking_score)}</span></td><td>${esc(relativeDate(job.posted_at, 'Not provided'))}</td>`;
@@ -248,6 +264,8 @@ function populateFacets(facets) {
   populateSelect(controls.ats, facets.ats, 'All ATS platforms', currentState.ats);
   populateSelect(controls.country, facets.countries, 'All countries', currentState.country);
   populateSelect(controls.workplace, facets.workplace_types, 'Any arrangement', currentState.workplace);
+  populateSelect(controls.family, facets.job_families || [], 'All job families', currentState.family);
+  populateSelect(controls.employment, facets.employment_types || [], 'Any employment type', currentState.employment);
 }
 
 async function persistSeen(job) {
@@ -334,6 +352,8 @@ async function loadFeed() {
     if (sequence !== loadSequence) return;
     feed = payload;
     jobs = payload.items;
+    relaxation.hidden = !payload.relaxed_filters?.length;
+    relaxation.textContent = payload.relaxation_notice || '';
     populateFacets(payload.facets);
     renderRows();
     renderPagination();
@@ -363,9 +383,11 @@ document.querySelector('[data-tabs]').addEventListener('click', (event) => {
 
 const updateSearch = debounce(() => updateUrl({ q: controls.q.value.trim() }, { replace: true }), 350);
 const updateLocation = debounce(() => updateUrl({ location: controls.location.value.trim() }, { replace: true }), 350);
+const updateMinimumSalary = debounce(() => updateUrl({ minSalary: controls.minSalary.value }, { replace: true }), 350);
 controls.q.addEventListener('input', updateSearch);
 controls.location.addEventListener('input', updateLocation);
-['source', 'ats', 'country', 'workplace', 'salary', 'posted', 'score', 'sort'].forEach((key) => {
+controls.minSalary.addEventListener('input', updateMinimumSalary);
+['family', 'source', 'ats', 'country', 'workplace', 'salary', 'employment', 'posted', 'score', 'sort'].forEach((key) => {
   controls[key].addEventListener('change', () => updateUrl({ [key]: controls[key].value }));
 });
 previousButton.addEventListener('click', () => updateUrl({ offset: Math.max(0, currentState.offset - LIMIT) }, { resetOffset: false }));

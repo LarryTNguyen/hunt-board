@@ -52,6 +52,7 @@ class User(TimestampMixin, Base):
     applications: Mapped[list[Application]] = relationship(back_populates="user")
     preference: Mapped[UserPreference | None] = relationship(back_populates="user", uselist=False)
     saved_searches: Mapped[list[SavedSearch]] = relationship(back_populates="user")
+    manual_jobs: Mapped[list[ManualJob]] = relationship(back_populates="user")
 
 
 class Invitation(TimestampMixin, Base):
@@ -84,6 +85,16 @@ class UserPreference(TimestampMixin, Base):
     country: Mapped[str] = mapped_column(String(120), default="USA", nullable=False)
     remote_allowed: Mapped[bool] = mapped_column(Boolean, default=True, nullable=False)
     minimum_score_threshold: Mapped[float] = mapped_column(Float, default=60, nullable=False)
+    selected_job_families: Mapped[list[str]] = mapped_column(JSON, default=list, nullable=False)
+    related_job_families: Mapped[list[str]] = mapped_column(JSON, default=list, nullable=False)
+    desired_titles: Mapped[list[str]] = mapped_column(JSON, default=list, nullable=False)
+    preferred_countries: Mapped[list[str]] = mapped_column(JSON, default=list, nullable=False)
+    excluded_countries: Mapped[list[str]] = mapped_column(JSON, default=list, nullable=False)
+    workplace_preferences: Mapped[list[str]] = mapped_column(JSON, default=list, nullable=False)
+    employment_types: Mapped[list[str]] = mapped_column(JSON, default=list, nullable=False)
+    sponsorship_required: Mapped[bool | None] = mapped_column(Boolean)
+    minimum_salary: Mapped[Decimal | None] = mapped_column(Numeric(14, 2))
+    excluded_companies: Mapped[list[str]] = mapped_column(JSON, default=list, nullable=False)
 
     user: Mapped[User] = relationship(back_populates="preference")
 
@@ -116,6 +127,16 @@ class Source(TimestampMixin, Base):
     job_postings: Mapped[list[JobPosting]] = relationship(back_populates="source")
 
 
+class JobFamily(TimestampMixin, Base):
+    """Fixed private-beta taxonomy; application code exposes no mutation API."""
+
+    __tablename__ = "job_families"
+
+    slug: Mapped[str] = mapped_column(String(80), primary_key=True)
+    name: Mapped[str] = mapped_column(String(120), nullable=False, unique=True)
+    sort_order: Mapped[int] = mapped_column(Integer, nullable=False, unique=True)
+
+
 class JobPosting(TimestampMixin, Base):
     __tablename__ = "job_postings"
     __table_args__ = (
@@ -130,6 +151,7 @@ class JobPosting(TimestampMixin, Base):
         Index("ix_job_postings_location_country_code", "location_country_code"),
         Index("ix_job_postings_feed_default", "active", "duplicate_status", "ranking_score", "id"),
         Index("ix_job_postings_source_id", "source_id"),
+        Index("ix_job_postings_family_active", "job_family_slug", "active"),
     )
 
     id: Mapped[int] = mapped_column(Integer, primary_key=True)
@@ -171,6 +193,17 @@ class JobPosting(TimestampMixin, Base):
     closed_at: Mapped[datetime | None] = mapped_column(DateTime(timezone=True))
     reposted_at: Mapped[datetime | None] = mapped_column(DateTime(timezone=True))
     consecutive_missed_runs: Mapped[int] = mapped_column(Integer, default=0, nullable=False)
+    job_family_slug: Mapped[str] = mapped_column(
+        ForeignKey("job_families.slug"), default="other", nullable=False
+    )
+    classification_confidence: Mapped[float] = mapped_column(Float, default=0, nullable=False)
+    classification_method: Mapped[str] = mapped_column(String(40), default="fallback", nullable=False)
+    classification_reason: Mapped[str] = mapped_column(String(500), default="Insufficient evidence", nullable=False)
+    classification_overridden_at: Mapped[datetime | None] = mapped_column(DateTime(timezone=True))
+    classification_overridden_by_user_id: Mapped[int | None] = mapped_column(ForeignKey("users.id"))
+    classification_override_reason: Mapped[str | None] = mapped_column(String(500))
+    sponsorship_status: Mapped[str] = mapped_column(String(40), default="unknown", nullable=False)
+    remote_scope: Mapped[str] = mapped_column(String(40), default="not_remote", nullable=False)
 
     source: Mapped[Source] = relationship(back_populates="job_postings")
     applications: Mapped[list[Application]] = relationship(back_populates="job_posting")
@@ -272,12 +305,38 @@ class DiscardedJob(TimestampMixin, Base):
 
 class ApplicationStatus(TimestampMixin, Base):
     __tablename__ = "application_statuses"
+    __table_args__ = (
+        UniqueConstraint("user_id", "slug", name="uq_application_statuses_user_slug"),
+    )
 
     id: Mapped[int] = mapped_column(Integer, primary_key=True)
-    name: Mapped[str] = mapped_column(String(120), nullable=False, unique=True)
-    slug: Mapped[str] = mapped_column(String(120), nullable=False, unique=True)
+    name: Mapped[str] = mapped_column(String(120), nullable=False)
+    slug: Mapped[str] = mapped_column(String(120), nullable=False)
     sort_order: Mapped[int] = mapped_column(Integer, nullable=False)
     is_terminal: Mapped[bool] = mapped_column(Boolean, default=False, nullable=False)
+    standard_category: Mapped[str] = mapped_column(String(40), default="applied", nullable=False)
+    user_id: Mapped[int | None] = mapped_column(ForeignKey("users.id"))
+    is_custom: Mapped[bool] = mapped_column(Boolean, default=False, nullable=False)
+
+
+class ManualJob(TimestampMixin, Base):
+    __tablename__ = "manual_jobs"
+    __table_args__ = (Index("ix_manual_jobs_user_created", "user_id", "created_at"),)
+
+    id: Mapped[int] = mapped_column(Integer, primary_key=True)
+    user_id: Mapped[int] = mapped_column(ForeignKey("users.id"), nullable=False)
+    company_name: Mapped[str] = mapped_column(String(255), nullable=False)
+    title: Mapped[str] = mapped_column(String(500), nullable=False)
+    location: Mapped[str | None] = mapped_column(String(500))
+    workplace_type: Mapped[str | None] = mapped_column(String(120))
+    job_family_slug: Mapped[str] = mapped_column(ForeignKey("job_families.slug"), default="other", nullable=False)
+    posting_url: Mapped[str | None] = mapped_column(String(1000))
+    apply_url: Mapped[str | None] = mapped_column(String(1000))
+    notes: Mapped[str | None] = mapped_column(Text)
+    approval_status: Mapped[str] = mapped_column(String(40), default="private", nullable=False)
+
+    user: Mapped[User] = relationship(back_populates="manual_jobs")
+    applications: Mapped[list[Application]] = relationship(back_populates="manual_job")
 
 
 class Application(TimestampMixin, Base):
@@ -285,15 +344,20 @@ class Application(TimestampMixin, Base):
 
     id: Mapped[int] = mapped_column(Integer, primary_key=True)
     user_id: Mapped[int] = mapped_column(ForeignKey("users.id"), nullable=False)
-    job_posting_id: Mapped[int] = mapped_column(ForeignKey("job_postings.id"), nullable=False)
+    job_posting_id: Mapped[int | None] = mapped_column(ForeignKey("job_postings.id"))
+    manual_job_id: Mapped[int | None] = mapped_column(ForeignKey("manual_jobs.id"))
     status_id: Mapped[int | None] = mapped_column(ForeignKey("application_statuses.id"))
     # status_id is canonical. This slug is retained as a compatibility snapshot
     # for clients created against the Milestone 1 schema.
     status: Mapped[str] = mapped_column(String(80), default="applied", nullable=False)
     notes: Mapped[str | None] = mapped_column(Text)
+    link_url: Mapped[str | None] = mapped_column(String(1000))
+    deleted_at: Mapped[datetime | None] = mapped_column(DateTime(timezone=True))
+    purge_after: Mapped[datetime | None] = mapped_column(DateTime(timezone=True))
 
     user: Mapped[User] = relationship(back_populates="applications")
-    job_posting: Mapped[JobPosting] = relationship(back_populates="applications")
+    job_posting: Mapped[JobPosting | None] = relationship(back_populates="applications")
+    manual_job: Mapped[ManualJob | None] = relationship(back_populates="applications")
 
 
 class ApplicationEvent(TimestampMixin, Base):

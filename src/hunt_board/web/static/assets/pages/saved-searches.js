@@ -24,6 +24,8 @@ function describeFilters(filters) {
   if (filters.remote_only) parts.push('remote');
   if (filters.min_score != null) parts.push(`${filters.min_score}+ score`);
   if (filters.posted_within_days) parts.push(`${filters.posted_within_days} days`);
+  if (filters.job_families?.length) parts.push(filters.job_families.map((item) => item.replaceAll('-', ' ')).join(', '));
+  if (filters.min_salary != null) parts.push(`$${Number(filters.min_salary).toLocaleString()}+`);
   return parts.join(' · ') || 'All eligible discovery jobs';
 }
 
@@ -69,6 +71,11 @@ function editSearch(search) {
   form.elements.country.value = filters.country || '';
   form.elements.min_score.value = filters.min_score ?? '';
   form.elements.posted_within_days.value = filters.posted_within_days ?? '';
+  form.elements.job_families.value = (filters.job_families || []).join(', ');
+  form.elements.desired_titles.value = (filters.desired_titles || []).join(', ');
+  form.elements.exclude_keywords.value = (filters.exclude_keywords || []).join(', ');
+  form.elements.excluded_companies.value = (filters.excluded_companies || []).join(', ');
+  form.elements.min_salary.value = filters.min_salary ?? '';
   form.elements.remote_only.checked = filters.remote_only;
   form.elements.is_active.checked = search.is_active;
   form.elements.is_default.checked = search.is_default;
@@ -80,6 +87,7 @@ function editSearch(search) {
 
 function formPayload() {
   const numberOrNull = (value) => value === '' ? null : Number(value);
+  const values = (value) => value.split(',').map((item) => item.trim()).filter(Boolean);
   return {
     name: form.elements.name.value,
     description: form.elements.description.value || null,
@@ -89,6 +97,11 @@ function formPayload() {
       remote_only: form.elements.remote_only.checked,
       min_score: numberOrNull(form.elements.min_score.value),
       posted_within_days: numberOrNull(form.elements.posted_within_days.value),
+      job_families: values(form.elements.job_families.value),
+      desired_titles: values(form.elements.desired_titles.value),
+      exclude_keywords: values(form.elements.exclude_keywords.value),
+      excluded_companies: values(form.elements.excluded_companies.value),
+      min_salary: numberOrNull(form.elements.min_salary.value),
       active: true,
       discarded: false,
       application_state: 'none',
@@ -110,8 +123,9 @@ async function loadMatches() {
   matchesSection.hidden = false;
   loading(matchesHost, 'Reading route matches…', 'ledger');
   try {
-    const payload = await api.savedSearchMatches(selectedId, { limit: 100, new_only: newOnly.checked });
+    const payload = await api.savedSearchMatches(selectedId, { limit: 100, new_only: newOnly.checked, relax: !newOnly.checked, minimum_results: 10 });
     matchTitle.textContent = `${payload.saved_search.name} · ${payload.total} match${payload.total === 1 ? '' : 'es'}`;
+    if (payload.relaxation_notice) message.textContent = payload.relaxation_notice;
     if (!payload.items.length) renderEmpty(matchesHost, newOnly.checked ? 'No new matches' : 'No route matches', newOnly.checked ? 'This route is caught up.' : 'Edit the route to broaden its filters.');
     else matchesHost.innerHTML = payload.items.map(matchMarkup).join('');
   } catch (error) {

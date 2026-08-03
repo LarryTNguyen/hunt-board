@@ -7,6 +7,7 @@ from pydantic import BaseModel, ConfigDict, Field, field_validator, model_valida
 
 from hunt_board.api.schemas import JobFeedFacetsRead, JobPostingRead, JobSummaryRead
 from hunt_board.jobs.query import SortBy, SortOrder
+from hunt_board.jobs.classification import JOB_FAMILY_SLUGS
 
 
 class SavedSearchFilters(BaseModel):
@@ -30,6 +31,19 @@ class SavedSearchFilters(BaseModel):
     application_state: Literal["none", "tracked", "any"] = "none"
     remote_only: bool = False
     posted_within_days: int | None = Field(default=None, ge=1, le=3650)
+    job_families: list[str] = Field(default_factory=list)
+    related_job_families: list[str] = Field(default_factory=list)
+    desired_titles: list[str] = Field(default_factory=list)
+    include_keywords: list[str] = Field(default_factory=list)
+    exclude_keywords: list[str] = Field(default_factory=list)
+    countries: list[str] = Field(default_factory=list)
+    excluded_countries: list[str] = Field(default_factory=list)
+    workplace_types: list[str] = Field(default_factory=list)
+    employment_types: list[str] = Field(default_factory=list)
+    experience_levels: list[str] = Field(default_factory=list)
+    sponsorship_required: bool | None = None
+    min_salary: float | None = Field(default=None, ge=0)
+    excluded_companies: list[str] = Field(default_factory=list)
 
     @field_validator(
         "q",
@@ -64,6 +78,34 @@ class SavedSearchFilters(BaseModel):
     @classmethod
     def lowercase_application_state(cls, value: object) -> object:
         return value.lower() if isinstance(value, str) else value
+
+    @field_validator(
+        "job_families", "related_job_families", "desired_titles", "include_keywords",
+        "exclude_keywords", "countries", "excluded_countries", "workplace_types",
+        "employment_types", "experience_levels", "excluded_companies",
+    )
+    @classmethod
+    def normalized_lists(cls, value: list[str]) -> list[str]:
+        result: list[str] = []
+        seen: set[str] = set()
+        for item in value:
+            clean = item.strip()
+            if not clean:
+                raise ValueError("filter list values cannot be empty")
+            key = clean.casefold()
+            if key not in seen:
+                result.append(clean)
+                seen.add(key)
+        return result
+
+    @field_validator("job_families", "related_job_families")
+    @classmethod
+    def valid_families(cls, value: list[str]) -> list[str]:
+        normalized = [item.casefold().replace("_", "-") for item in value]
+        unsupported = sorted(set(normalized) - JOB_FAMILY_SLUGS)
+        if unsupported:
+            raise ValueError(f"unsupported job families: {', '.join(unsupported)}")
+        return normalized
 
 
 class SavedSearchCreate(BaseModel):
@@ -188,6 +230,10 @@ class SavedSearchMatchesRead(BaseModel):
     has_more: bool
     generated_at: datetime
     facets: JobFeedFacetsRead
+    strict_total: int = 0
+    relaxed_total: int = 0
+    relaxed_filters: list[str] = Field(default_factory=list)
+    relaxation_notice: str | None = None
 
 
 class SavedSearchReviewedRead(BaseModel):

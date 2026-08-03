@@ -1,6 +1,10 @@
-# Hunt Board Architecture through Milestone 6
+# Hunt Board Architecture through Milestone 6.1
 
 Hunt Board uses a conventional Python `src/` layout. The FastAPI application is assembled in `hunt_board.main`, while database, ingestion, matching, job-domain, API, and admin concerns remain in separate packages.
+
+Milestone 6.1 keeps `jobs/query.py` as the one SQL filter/sort/facet path for discovery, saved searches, and dashboard selection. `jobs/classification.py` owns the fixed taxonomy/rules; adapters only normalize source data. Ingestion preserves admin overrides. `jobs/relaxation.py` changes a `JobQueryFilters` value and re-executes the canonical path, preventing strict and relaxed semantics from drifting.
+
+`UserPreference` remains canonical and saved-search JSON remains portable. Shared `job_postings` are separate from RLS-protected `manual_jobs`, applications, saved state, and discarded state. Custom stages map to six standard reporting categories.
 
 ## Runtime boundaries
 

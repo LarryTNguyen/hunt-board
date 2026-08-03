@@ -2,6 +2,7 @@ from __future__ import annotations
 
 from dataclasses import dataclass, field
 from datetime import datetime, timezone
+from decimal import Decimal
 
 from pydantic import BaseModel, Field
 
@@ -37,6 +38,16 @@ class UserPreferences(BaseModel):
     country: str = "USA"
     remote_allowed: bool = True
     minimum_score_threshold: float = Field(default=60, ge=0, le=100)
+    selected_job_families: list[str] = Field(default_factory=list)
+    related_job_families: list[str] = Field(default_factory=list)
+    desired_titles: list[str] = Field(default_factory=list)
+    preferred_countries: list[str] = Field(default_factory=list)
+    excluded_countries: list[str] = Field(default_factory=list)
+    workplace_preferences: list[str] = Field(default_factory=list)
+    employment_types: list[str] = Field(default_factory=list)
+    sponsorship_required: bool | None = None
+    minimum_salary: Decimal | None = Field(default=None, ge=0)
+    excluded_companies: list[str] = Field(default_factory=list)
 
 
 @dataclass(frozen=True)

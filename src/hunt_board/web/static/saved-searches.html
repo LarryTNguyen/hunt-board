@@ -25,11 +25,16 @@
         <form data-search-form>
           <input type="hidden" name="id">
           <div class="form-grid">
-            <label class="control-field"><span>Name</span><input class="text-input" name="name" maxlength="120" required placeholder="Backend internships"></label>
+            <label class="control-field"><span>Name</span><input class="text-input" name="name" maxlength="120" required placeholder="Finance and strategy"></label>
             <label class="control-field"><span>Description</span><input class="text-input" name="description" maxlength="2000" placeholder="What makes this route useful"></label>
-            <label class="control-field"><span>Query</span><input class="text-input" name="q" maxlength="500" placeholder="backend engineer"></label>
+            <label class="control-field"><span>Query</span><input class="text-input" name="q" maxlength="500" placeholder="forecasting or growth"></label>
+            <label class="control-field"><span>Job families</span><input class="text-input" name="job_families" placeholder="finance-accounting, consulting-strategy"></label>
+            <label class="control-field"><span>Desired titles</span><input class="text-input" name="desired_titles" placeholder="Financial analyst, strategy associate"></label>
+            <label class="control-field"><span>Excluded keywords</span><input class="text-input" name="exclude_keywords" placeholder="commission only"></label>
+            <label class="control-field"><span>Excluded companies</span><input class="text-input" name="excluded_companies" placeholder="Company name"></label>
             <label class="control-field"><span>Country</span><input class="text-input" name="country" maxlength="120" placeholder="US"></label>
             <label class="control-field"><span>Minimum score</span><input class="text-input" name="min_score" type="number" min="0" max="100" step="1" placeholder="70"></label>
+            <label class="control-field"><span>Minimum salary</span><input class="text-input" name="min_salary" type="number" min="0" step="1000" placeholder="85000"></label>
             <label class="control-field"><span>First posted within days</span><input class="text-input" name="posted_within_days" type="number" min="1" max="3650" placeholder="7"></label>
           </div>
           <div class="route-choice-row">

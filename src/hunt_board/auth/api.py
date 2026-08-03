@@ -12,8 +12,9 @@ from sqlalchemy.orm import Session
 from hunt_board.auth.dependencies import require_admin, require_identity, require_user
 from hunt_board.auth.security import SupabaseIdentity, normalize_email
 from hunt_board.core.config import get_settings
-from hunt_board.db.models import AuditEvent, Invitation, User
+from hunt_board.db.models import AuditEvent, Invitation, SavedSearch, User
 from hunt_board.db.session import get_db
+from hunt_board.matching.service import ensure_user_preference
 
 
 router = APIRouter(prefix="/auth", tags=["auth"])
@@ -94,6 +95,31 @@ def auth_config() -> dict:
     }
 
 
+def _ensure_default_profile(db: Session, profile: User) -> None:
+    ensure_user_preference(db, profile)
+    default = db.scalar(
+        select(SavedSearch).where(SavedSearch.user_id == profile.id, SavedSearch.is_default.is_(True))
+    )
+    if default is None:
+        db.add(
+            SavedSearch(
+                user_id=profile.id,
+                name="All Jobs",
+                description="Broad default route; add optional preferences to improve relevance.",
+                filters_json={
+                    "active": True,
+                    "discarded": False,
+                    "application_state": "none",
+                    "include_duplicates": False,
+                },
+                sort_by="ranking_score",
+                sort_order="desc",
+                is_default=True,
+                is_active=True,
+            )
+        )
+
+
 @router.post("/activate", response_model=ProfileRead)
 def activate_profile(
     request: Request,
@@ -109,6 +135,8 @@ def activate_profile(
             raise HTTPException(status_code=403, detail="Authenticated email does not match the profile")
         if not existing.is_active or existing.account_status != "active":
             raise HTTPException(status_code=403, detail="This profile is not active")
+        _ensure_default_profile(db, existing)
+        db.commit()
         return existing
 
     profile = db.scalar(select(User).where(User.normalized_email == identity.email))
@@ -188,6 +216,7 @@ def activate_profile(
         target_type="invitation",
         target_id=str(invitation.id),
     )
+    _ensure_default_profile(db, profile)
     db.commit()
     db.refresh(profile)
     return profile

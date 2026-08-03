@@ -35,6 +35,7 @@ from hunt_board.ingestion.sanitizer import sanitized_description
 from hunt_board.ingestion.sources import SourceConfig, load_sources, select_sources
 from hunt_board.jobs.dedupe import DedupeDecision, canonicalize_url, decide_dedupe, normalize_text
 from hunt_board.matching.ranking import RankingResult, UserPreferences, rank_job
+from hunt_board.jobs.classification import ClassificationResult, apply_classification, classify_job
 
 
 RAW_JSON_RETENTION_DAYS = 60
@@ -542,6 +543,18 @@ class IngestionService:
         scrape_run: ScrapeRun | None,
     ) -> tuple[str, bool]:
         now = datetime.now(timezone.utc)
+        try:
+            classification = classify_job(
+                department=job.department,
+                title=job.title,
+                description=job.description_text,
+            )
+        except Exception:
+            logger.exception(
+                "classification.error",
+                extra={"event_name": "classification.error", "event_data": {"source_slug": source.slug}},
+            )
+            classification = ClassificationResult("other", 0.0, "error", "Classification failed safely")
         target = decision.existing_job if decision.action == "upsert" else None
         if (
             target is not None
@@ -605,6 +618,15 @@ class IngestionService:
         target.source_updated_at = job.updated_at
         target.ranking_score = ranking.score
         target.ranking_reasons = ranking.reasons
+        apply_classification(target, classification)
+        workplace = (job.workplace_type or "").casefold()
+        target.remote_scope = (
+            "country_restricted"
+            if "remote" in workplace and job.location_country_code
+            else "unrestricted"
+            if "remote" in workplace
+            else "not_remote"
+        )
         target.raw_json = job.raw_json
         target.raw_json_expires_at = now + timedelta(days=RAW_JSON_RETENTION_DAYS)
         version = self._record_version(db, target, job)
@@ -685,6 +707,17 @@ class IngestionService:
             (target.ranking_score, ranking.score),
             (target.ranking_reasons, ranking.reasons),
         )
+        if target.classification_overridden_at is None:
+            classification = classify_job(
+                department=job.department,
+                title=job.title,
+                description=job.description_text,
+            )
+            relevant_values += (
+                (target.job_family_slug, classification.family_slug),
+                (target.classification_method, classification.method),
+                (target.classification_reason, classification.reason),
+            )
         return not target.active or any(current != incoming for current, incoming in relevant_values)
 
     @staticmethod

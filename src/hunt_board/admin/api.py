@@ -17,6 +17,7 @@ from hunt_board.api.schemas import (
     ScrapeSourceRunRead,
     SourceRead,
     SourceSyncRead,
+    ClassificationOverrideUpdate,
 )
 from hunt_board.auth.dependencies import require_admin
 from hunt_board.core.config import Settings, get_settings
@@ -25,12 +26,46 @@ from hunt_board.db.session import get_db
 from hunt_board.ingestion.registry import sync_sources_from_yaml
 from hunt_board.ingestion.lock import IngestionAlreadyRunningError
 from hunt_board.ingestion.service import IngestionService
+from hunt_board.jobs.classification_service import coverage_report
+from hunt_board.core.observability import metrics
 
 router = APIRouter(
     prefix="/admin",
     tags=["admin"],
     dependencies=[Depends(require_admin)],
 )
+
+
+@router.get("/coverage")
+def active_job_coverage(db: Session = Depends(get_db)) -> dict:
+    return coverage_report(db)
+
+
+@router.patch("/jobs/{job_id}/classification")
+def override_job_classification(
+    job_id: int,
+    payload: ClassificationOverrideUpdate,
+    user=Depends(require_admin),
+    db: Session = Depends(get_db),
+) -> dict:
+    job = db.get(JobPosting, job_id)
+    if job is None:
+        raise HTTPException(status_code=404, detail="Job not found")
+    job.job_family_slug = payload.job_family_slug
+    job.classification_confidence = 1.0
+    job.classification_method = "admin_override"
+    job.classification_reason = "Administrator category override"
+    job.classification_overridden_at = datetime.now(timezone.utc)
+    job.classification_overridden_by_user_id = user.id
+    job.classification_override_reason = payload.reason
+    db.commit()
+    metrics.observe_classification(payload.job_family_slug, "admin_override", "high")
+    return {
+        "job_id": job.id,
+        "job_family_slug": job.job_family_slug,
+        "classification_method": job.classification_method,
+        "overridden_at": job.classification_overridden_at,
+    }
 
 
 @router.get("/operations", response_model=OperationsRead)

@@ -7,10 +7,11 @@ from uuid import NAMESPACE_URL, uuid5
 from sqlalchemy import select
 from sqlalchemy.orm import Session
 
-from hunt_board.db.models import ApplicationStatus, Invitation, SavedSearch, User, UserPreference
+from hunt_board.db.models import ApplicationStatus, Invitation, JobFamily, SavedSearch, User, UserPreference
 from hunt_board.ingestion.registry import SourceSyncResult, sync_sources_from_yaml
 from hunt_board.matching.ranking import UserPreferences
 from hunt_board.auth.security import normalize_email
+from hunt_board.jobs.classification import JOB_FAMILIES
 
 
 DEFAULT_APPLICATION_STATUSES = [
@@ -25,6 +26,18 @@ DEFAULT_APPLICATION_STATUSES = [
     "Withdrawn",
 ]
 
+STANDARD_CATEGORY_BY_STATUS = {
+    "Nothing": "archived",
+    "Applied": "applied",
+    "OA Received": "interview",
+    "Interview Scheduled": "interview",
+    "Positive Hear Back": "interview",
+    "Ghosted": "archived",
+    "Rejection": "rejected",
+    "Offer Received": "offer",
+    "Withdrawn": "withdrawn",
+}
+
 
 @dataclass(frozen=True)
 class SeedResult:
@@ -32,6 +45,7 @@ class SeedResult:
     statuses_created: int
     sources: SourceSyncResult
     saved_search_created: bool = False
+    families_created: int = 0
 
 
 def _slugify(value: str) -> str:
@@ -46,6 +60,13 @@ def seed_milestone_one(
     environment: str = "development",
 ) -> SeedResult:
     normalized_email = normalize_email(email)
+    existing_families = set(db.scalars(select(JobFamily.slug)).all())
+    families_created = 0
+    for sort_order, (slug, name) in enumerate(JOB_FAMILIES, 1):
+        if slug not in existing_families:
+            db.add(JobFamily(slug=slug, name=name, sort_order=sort_order))
+            families_created += 1
+    db.flush()
     user = db.scalar(
         select(User).where(
             (User.normalized_email == normalized_email) | (User.email == normalized_email)
@@ -147,6 +168,7 @@ def seed_milestone_one(
                 slug=_slugify(name),
                 sort_order=index,
                 is_terminal=name in terminal,
+                standard_category=STANDARD_CATEGORY_BY_STATUS[name],
             )
         )
         statuses_created += 1
@@ -157,4 +179,5 @@ def seed_milestone_one(
         statuses_created=statuses_created,
         sources=sources,
         saved_search_created=saved_search_created,
+        families_created=families_created,
     )

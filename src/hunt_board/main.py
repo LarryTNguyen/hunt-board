@@ -16,7 +16,7 @@ from hunt_board.admin.api import router as admin_router
 from hunt_board.admin.metrics import router as metrics_router
 from hunt_board.api.schemas import IngestionHealthRead
 from hunt_board.api.ingest import router as ingest_router
-from hunt_board.api.jobs import router as jobs_router
+from hunt_board.api.jobs import public_router, router as jobs_router
 from hunt_board.api.preferences import router as preferences_router
 from hunt_board.db.session import get_db
 from hunt_board.db.models import JobPosting, SavedSearch, ScrapeRun, Source
@@ -24,7 +24,9 @@ from hunt_board.core.config import get_settings
 from hunt_board.core.observability import (
     configure_logging,
     metrics,
+    request_id_context,
     safe_correlation_id,
+    trace_id_context,
 )
 from hunt_board.dashboard.api import router as dashboard_router
 from hunt_board.notifications.api import router as notifications_router
@@ -37,7 +39,7 @@ from hunt_board.auth.api import router as auth_router
 def create_app() -> FastAPI:
     configure_logging()
     logger = logging.getLogger("hunt_board")
-    app = FastAPI(title="Hunt Board", version="0.6.0")
+    app = FastAPI(title="Hunt Board", version="0.6.1")
 
     @app.exception_handler(SQLAlchemyError)
     async def database_error_handler(request: Request, _exc: SQLAlchemyError) -> JSONResponse:
@@ -69,6 +71,8 @@ def create_app() -> FastAPI:
         )
         request.state.request_id = request_id
         request.state.trace_id = trace_id
+        request_id_context.set(request_id)
+        trace_id_context.set(trace_id)
         response = await call_next(request)
         duration = perf_counter() - started
         route = request.scope.get("route")
@@ -189,6 +193,7 @@ def create_app() -> FastAPI:
         }
 
     app.include_router(jobs_router)
+    app.include_router(public_router)
     app.include_router(jobs_router, prefix="/api", include_in_schema=False)
     app.include_router(preferences_router)
     app.include_router(preferences_router, prefix="/api", include_in_schema=False)

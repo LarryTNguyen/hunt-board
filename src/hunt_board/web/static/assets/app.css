@@ -730,3 +730,19 @@ body.drawer-open .ledger td:nth-child(7) { display: none; }
   .daily-match-score { text-align: left; }
   .section-heading .action-row { align-items: start; }
 }
+
+/* Milestone 6.1 generalized route specimens and transparent broadening. */
+.preference-reminder, .relaxation-banner { margin: 0 0 22px; padding: 16px 18px; display: flex; justify-content: space-between; align-items: center; gap: 18px; border: 1px solid var(--signal-orange); border-left-width: 7px; background: #fff2d2; box-shadow: 5px 5px 0 rgba(22,61,52,.06); }
+.preference-reminder strong { display: block; margin: 7px 0 3px; color: var(--forest-ink); font: 700 24px/1 var(--font-display); }
+.preference-reminder p { margin: 0; font-size: 11px; }
+.family-specimen-grid { display: grid; grid-template-columns: repeat(3,minmax(0,1fr)); gap: 8px; margin: 8px 0 22px; }
+.family-specimen-grid .choice { min-height: 54px; padding: 10px 12px; display: flex; align-items: center; border: 1px solid var(--line); background: linear-gradient(135deg,var(--paper-light) 0 82%,rgba(242,193,78,.35) 82%); font-size: 11px; }
+.family-specimen-grid .choice:has(input:checked) { border-color: var(--forest-ink); box-shadow: inset 5px 0 0 var(--signal-orange); }
+.sponsorship-field { max-width: 360px; margin-top: 18px; }
+.relaxation-banner { margin: 10px 0; color: #742d20; font: 600 10px/1.45 var(--font-data); text-transform: uppercase; }
+.ledger-submeta { text-transform: none; }
+@media (max-width: 760px) {
+  .preference-reminder { align-items: flex-start; flex-direction: column; }
+  .family-specimen-grid { grid-template-columns: 1fr 1fr; }
+}
+@media (max-width: 500px) { .family-specimen-grid { grid-template-columns: 1fr; } }

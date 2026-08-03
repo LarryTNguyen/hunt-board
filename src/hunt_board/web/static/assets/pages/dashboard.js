@@ -1,6 +1,6 @@
 import '../navigation.js?v=20260727-5';
 import { api } from '../api.js?v=20260727-5';
-import { escapeHtml as esc, relativeDate, salary, score } from '../format.js?v=20260721-2';
+import { escapeHtml as esc, label, relativeDate, salary, score } from '../format.js?v=20260721-2';
 import { loading, makeToast, renderEmpty, renderError, setBusy } from '../ui.js?v=20260721-1';
 
 const message = document.querySelector('[data-dashboard-message]');
@@ -42,7 +42,7 @@ function renderSearches(searches) {
 
 function matchCard(job) {
   return `<article class="daily-match" data-job-id="${job.id}">
-    <div><span class="utility-label">${esc(job.source?.ats || job.source_slug)} / ${esc(relativeDate(job.first_seen_at))}</span><h3><a href="/app/job-detail.html?id=${job.id}">${esc(job.title)}</a></h3><p>${esc(job.company_name)} · ${esc(job.location || 'Location not listed')} · ${esc(salary(job))}</p></div>
+    <div><span class="utility-label">${esc(label(job.job_family_slug, 'Other'))} / ${esc(job.source?.ats || job.source_slug)} / ${esc(relativeDate(job.first_seen_at))}</span><h3><a href="/app/job-detail.html?id=${job.id}">${esc(job.title)}</a></h3><p>${esc(job.company_name)} · ${esc(job.location || 'Location not listed')} · ${esc(salary(job))}</p></div>
     <strong class="daily-match-score">${score(job.ranking_score)}</strong>
     <div class="action-row">${job.is_saved ? '<button class="button button-quiet" type="button" data-unsave>Unsave</button>' : '<button class="button" type="button" data-save>Save</button>'}${job.has_application ? '<span class="tag">Tracked</span>' : '<button class="button button-dark" type="button" data-track>Add to tracker</button>'}<button class="button button-quiet" type="button" data-discard>Hide</button></div>
   </article>`;

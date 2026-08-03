@@ -2,6 +2,7 @@ from __future__ import annotations
 
 from sqlalchemy import Select
 from sqlalchemy.orm import Session
+import logging
 
 from hunt_board.db.models import JobPosting, SavedSearch
 from hunt_board.jobs.query import (
@@ -13,6 +14,10 @@ from hunt_board.jobs.query import (
 )
 from hunt_board.jobs.service import job_read_payload
 from hunt_board.searches.schemas import SavedSearchFilters
+from hunt_board.core.observability import trace_span
+
+
+logger = logging.getLogger("hunt_board")
 
 
 def saved_filters(saved_search: SavedSearch) -> SavedSearchFilters:
@@ -39,6 +44,19 @@ def to_job_filters(filters: SavedSearchFilters) -> JobQueryFilters:
         application_state=filters.application_state,
         remote_only=filters.remote_only,
         posted_within_days=filters.posted_within_days,
+        job_families=tuple(filters.job_families),
+        related_job_families=tuple(filters.related_job_families),
+        desired_titles=tuple(filters.desired_titles),
+        include_keywords=tuple(filters.include_keywords),
+        exclude_keywords=tuple(filters.exclude_keywords),
+        countries=tuple(filters.countries),
+        excluded_countries=tuple(filters.excluded_countries),
+        workplace_types=tuple(filters.workplace_types),
+        employment_types=tuple(filters.employment_types),
+        experience_levels=tuple(filters.experience_levels),
+        sponsorship_required=filters.sponsorship_required,
+        min_salary=filters.min_salary,
+        excluded_companies=tuple(filters.excluded_companies),
     )
 
 
@@ -57,14 +75,15 @@ def match_statement(
 
 
 def saved_search_counts(db: Session, saved_search: SavedSearch, user_id: int) -> tuple[int, int]:
-    statement, _, _ = match_statement(db, saved_search, user_id)
-    match_count = count_jobs(db, statement)
-    if saved_search.last_viewed_at is None:
-        return match_count, match_count
-    return match_count, count_jobs(
-        db,
-        statement.where(JobPosting.first_seen_at > saved_search.last_viewed_at),
-    )
+    with trace_span(logger, "saved_search.count", saved_search_id=saved_search.id):
+        statement, _, _ = match_statement(db, saved_search, user_id)
+        match_count = count_jobs(db, statement)
+        if saved_search.last_viewed_at is None:
+            return match_count, match_count
+        return match_count, count_jobs(
+            db,
+            statement.where(JobPosting.first_seen_at > saved_search.last_viewed_at),
+        )
 
 
 def saved_search_payload(
@@ -94,12 +113,13 @@ def saved_search_payload(
             db, saved_search, user_id
         )
     if preview_limit:
-        statement, relevance, _ = match_statement(db, saved_search, user_id)
+        statement, relevance, filters = match_statement(db, saved_search, user_id)
         statement = apply_job_sort(
             statement,
             saved_search.sort_by,
             saved_search.sort_order,
             relevance,
+            filters,
         ).limit(preview_limit)
         payload["preview_jobs"] = [
             job_read_payload(*row) for row in db.execute(statement).all()

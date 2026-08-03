@@ -1,6 +1,7 @@
 from __future__ import annotations
 
 from datetime import datetime, timedelta, timezone
+import logging
 
 from fastapi import APIRouter, Depends
 from sqlalchemy import and_, func, select
@@ -29,9 +30,11 @@ from hunt_board.jobs.query import (
 )
 from hunt_board.jobs.service import job_read_payload, job_summary
 from hunt_board.searches.service import match_statement, saved_search_payload
+from hunt_board.core.observability import trace_span
 
 
 router = APIRouter(prefix="/dashboard", tags=["dashboard"])
+logger = logging.getLogger("hunt_board")
 
 
 def _count(db: Session, statement) -> int:
@@ -43,6 +46,11 @@ def daily_dashboard(
     user: User = Depends(require_user),
     db: Session = Depends(get_db),
 ) -> dict:
+    with trace_span(logger, "dashboard.personalization", user_id=user.id):
+        return _daily_dashboard(db, user)
+
+
+def _daily_dashboard(db: Session, user: User) -> dict:
     now = datetime.now(timezone.utc)
     day_cutoff = now - timedelta(hours=24)
     week_cutoff = now - timedelta(days=7)
@@ -63,12 +71,15 @@ def daily_dashboard(
         saved_search_payload(db, item, user.id, preview_limit=3)
         for item in searches
     ]
-    saved_search_new_matches = sum(
-        item["new_since_review_count"] for item in search_payloads
+    driving_search = next((item for item in searches if item.is_default), searches[0] if searches else None)
+    driving_payload = next(
+        (item for item in search_payloads if driving_search and item["id"] == driving_search.id),
+        None,
     )
+    saved_search_new_matches = driving_payload["new_since_review_count"] if driving_payload else 0
 
     candidate_ids: set[int] = set()
-    for saved_search in searches:
+    for saved_search in ([driving_search] if driving_search else []):
         statement, _, _ = match_statement(
             db, saved_search, user.id, new_only=True
         )
@@ -123,22 +134,19 @@ def daily_dashboard(
     application_join = and_(
         Application.status_id == ApplicationStatus.id,
         Application.user_id == user.id,
+        Application.deleted_at.is_(None),
     )
     pipeline_rows = db.execute(
         select(
-            ApplicationStatus.slug,
-            ApplicationStatus.name,
-            ApplicationStatus.sort_order,
+            ApplicationStatus.standard_category,
+            func.min(ApplicationStatus.sort_order),
             func.count(Application.id),
         )
         .outerjoin(Application, application_join)
         .group_by(
-            ApplicationStatus.id,
-            ApplicationStatus.slug,
-            ApplicationStatus.name,
-            ApplicationStatus.sort_order,
+            ApplicationStatus.standard_category,
         )
-        .order_by(ApplicationStatus.sort_order, ApplicationStatus.id)
+        .order_by(func.min(ApplicationStatus.sort_order))
     ).all()
 
     follow_up_rows = db.execute(
@@ -148,6 +156,7 @@ def daily_dashboard(
         .join(ApplicationStatus, ApplicationStatus.id == Application.status_id)
         .where(
             Application.user_id == user.id,
+            Application.deleted_at.is_(None),
             ApplicationStatus.is_terminal.is_(False),
             Application.updated_at <= follow_up_cutoff,
         )
@@ -172,6 +181,7 @@ def daily_dashboard(
         .join(ApplicationStatus, ApplicationStatus.id == Application.status_id)
         .where(
             Application.user_id == user.id,
+            Application.deleted_at.is_(None),
             ApplicationStatus.is_terminal.is_(False),
         ),
     )
@@ -181,6 +191,7 @@ def daily_dashboard(
         .join(ApplicationStatus, ApplicationStatus.id == Application.status_id)
         .where(
             Application.user_id == user.id,
+            Application.deleted_at.is_(None),
             ApplicationStatus.is_terminal.is_(True),
         ),
     )
@@ -241,7 +252,8 @@ def daily_dashboard(
                 "sort_order": sort_order,
                 "count": count,
             }
-            for slug, name, sort_order, count in pipeline_rows
+            for category, sort_order, count in pipeline_rows
+            for slug, name in [(category, category.replace("_", " ").title())]
         ],
         "follow_up_candidates": follow_ups,
     }
