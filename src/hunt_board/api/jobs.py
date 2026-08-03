@@ -4,11 +4,12 @@ from datetime import datetime, timezone
 from typing import Literal
 
 from fastapi import APIRouter, Depends, HTTPException, Query
+from sqlalchemy import select
 from sqlalchemy.orm import Session
 
 from hunt_board.api.schemas import JobFeedRead, JobPostingRead
-from hunt_board.auth.dependencies import optional_user
-from hunt_board.db.models import User
+from hunt_board.auth.dependencies import optional_user, require_user
+from hunt_board.db.models import JobPosting, User, UserJobState
 from hunt_board.db.session import get_db
 from hunt_board.jobs.query import (
     JobQueryFilters,
@@ -153,6 +154,36 @@ def get_job(
     db: Session = Depends(get_db),
 ) -> dict:
     row = get_job_with_user_state(db, job_id, user.id if user else None)
+    if row is None:
+        raise HTTPException(status_code=404, detail="Job not found")
+    return job_read_payload(*row)
+
+
+@router.post("/{job_id}/seen", response_model=JobPostingRead)
+def mark_job_seen(
+    job_id: int,
+    user: User = Depends(require_user),
+    db: Session = Depends(get_db),
+) -> dict:
+    if db.get(JobPosting, job_id) is None:
+        raise HTTPException(status_code=404, detail="Job not found")
+    state = db.scalar(
+        select(UserJobState).where(
+            UserJobState.user_id == user.id,
+            UserJobState.job_posting_id == job_id,
+        )
+    )
+    if state is None:
+        state = UserJobState(
+            user_id=user.id,
+            job_posting_id=job_id,
+            seen_at=datetime.now(timezone.utc),
+        )
+        db.add(state)
+    elif state.seen_at is None:
+        state.seen_at = datetime.now(timezone.utc)
+    db.commit()
+    row = get_job_with_user_state(db, job_id, user.id)
     if row is None:
         raise HTTPException(status_code=404, detail="Job not found")
     return job_read_payload(*row)

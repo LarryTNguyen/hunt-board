@@ -88,6 +88,6 @@ async function load() {
     renderError(host, new Error('Choose a job from discovery before opening its dossier.'));
     return;
   }
-  try { job = await api.job(id); render(); } catch (error) { renderError(host, error, load); }
+  try { job = await api.markJobSeen(id); render(); } catch (error) { renderError(host, error, load); }
 }
 load();

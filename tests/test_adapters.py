@@ -1,6 +1,7 @@
 from __future__ import annotations
 
 import json
+from datetime import datetime, timezone
 from pathlib import Path
 from decimal import Decimal
 
@@ -49,7 +50,20 @@ async def test_greenhouse_adapter_normalizes_fixture() -> None:
         company_name="Acme",
         config={"board_token": "acme"},
     )
-    async with httpx.AsyncClient(transport=_transport("greenhouse_jobs.json")) as client:
+    listing_payload = json.loads((FIXTURE_DIR / "greenhouse_jobs.json").read_text(encoding="utf-8"))
+    requests: list[httpx.Request] = []
+
+    def handler(request: httpx.Request) -> httpx.Response:
+        requests.append(request)
+        if request.url.path.endswith("/jobs/101"):
+            return httpx.Response(
+                200,
+                json={**listing_payload["jobs"][0], "first_published": "2026-06-30T09:30:00Z"},
+                request=request,
+            )
+        return httpx.Response(200, json=listing_payload, request=request)
+
+    async with httpx.AsyncClient(transport=httpx.MockTransport(handler)) as client:
         jobs = await GreenhouseAdapter(client).fetch_jobs(source)
 
     assert jobs[0].external_job_id == "101"
@@ -60,6 +74,11 @@ async def test_greenhouse_adapter_normalizes_fixture() -> None:
     assert jobs[0].salary_min == Decimal("120000")
     assert jobs[0].salary_max == Decimal("160000")
     assert jobs[0].salary_currency == "USD"
+    assert jobs[0].posted_at == datetime(2026, 6, 30, 9, 30, tzinfo=timezone.utc)
+    assert [request.url.path for request in requests] == [
+        "/v1/boards/acme/jobs",
+        "/v1/boards/acme/jobs/101",
+    ]
 
 
 @pytest.mark.asyncio()
@@ -81,6 +100,7 @@ async def test_lever_adapter_normalizes_fixture() -> None:
     assert jobs[0].salary_min == Decimal("90000")
     assert jobs[0].salary_max == Decimal("125000")
     assert jobs[0].salary_interval == "year"
+    assert jobs[0].posted_at == datetime(2026, 7, 1, 12, tzinfo=timezone.utc)
 
 
 @pytest.mark.asyncio()
@@ -102,6 +122,7 @@ async def test_ashby_adapter_normalizes_fixture() -> None:
     assert jobs[0].salary_min == Decimal("130000")
     assert jobs[0].salary_max == Decimal("175000")
     assert jobs[0].salary_interval == "year"
+    assert jobs[0].posted_at == datetime(2026, 7, 2, 12, tzinfo=timezone.utc)
 
 
 @pytest.mark.asyncio()

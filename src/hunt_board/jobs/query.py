@@ -14,6 +14,7 @@ from hunt_board.db.models import (
     JobPosting,
     SavedJob,
     Source,
+    UserJobState,
 )
 
 
@@ -56,6 +57,7 @@ class JobQueryFilters:
 def user_state_statement(user_id: int | None, *columns: Any) -> Select:
     saved_join = and_(SavedJob.job_posting_id == JobPosting.id, SavedJob.user_id == user_id)
     discarded_join = and_(DiscardedJob.job_posting_id == JobPosting.id, DiscardedJob.user_id == user_id)
+    combined_state_join = and_(UserJobState.job_posting_id == JobPosting.id, UserJobState.user_id == user_id)
     latest_application_id = (
         select(func.max(Application.id))
         .where(
@@ -72,6 +74,7 @@ def user_state_statement(user_id: int | None, *columns: Any) -> Select:
         .join(Source, Source.id == JobPosting.source_id)
         .outerjoin(SavedJob, saved_join)
         .outerjoin(DiscardedJob, discarded_join)
+        .outerjoin(UserJobState, combined_state_join)
         .outerjoin(Application, application_join)
         .outerjoin(ApplicationStatus, ApplicationStatus.id == Application.status_id)
     )
@@ -87,6 +90,7 @@ def job_row_statement(user_id: int | None) -> Select:
         DiscardedJob.created_at,
         Application.id,
         ApplicationStatus,
+        UserJobState.seen_at,
     )
 
 
@@ -159,7 +163,7 @@ def apply_job_filters(
         )
     if "posted_within_days" not in exclude and filters.posted_within_days is not None:
         cutoff = datetime.now(timezone.utc) - timedelta(days=filters.posted_within_days)
-        statement = statement.where(func.coalesce(JobPosting.posted_at, JobPosting.first_seen_at) >= cutoff)
+        statement = statement.where(JobPosting.posted_at >= cutoff)
 
     relevance = None
     normalized_search = filters.search.strip() if filters.search else ""

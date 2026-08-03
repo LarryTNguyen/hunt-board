@@ -223,6 +223,7 @@ class UserJobState(TimestampMixin, Base):
         UniqueConstraint("user_id", "job_posting_id", name="uq_user_job_states_user_job"),
         Index("ix_user_job_states_user_saved", "user_id", "saved_at"),
         Index("ix_user_job_states_user_dismissed", "user_id", "dismissed_at"),
+        Index("ix_user_job_states_user_seen", "user_id", "seen_at"),
     )
 
     id: Mapped[int] = mapped_column(Integer, primary_key=True)
@@ -230,6 +231,7 @@ class UserJobState(TimestampMixin, Base):
     job_posting_id: Mapped[int] = mapped_column(ForeignKey("job_postings.id"), nullable=False)
     saved_at: Mapped[datetime | None] = mapped_column(DateTime(timezone=True))
     dismissed_at: Mapped[datetime | None] = mapped_column(DateTime(timezone=True))
+    seen_at: Mapped[datetime | None] = mapped_column(DateTime(timezone=True))
     notes: Mapped[str | None] = mapped_column(Text)
 
 

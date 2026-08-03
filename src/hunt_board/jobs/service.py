@@ -3,7 +3,7 @@ from __future__ import annotations
 from sqlalchemy import and_, func, select
 from sqlalchemy.orm import Session
 
-from hunt_board.db.models import Application, ApplicationStatus, DiscardedJob, JobPosting, SavedJob, Source
+from hunt_board.db.models import Application, ApplicationStatus, DiscardedJob, JobPosting, SavedJob, Source, UserJobState
 
 
 def source_summary(source: Source | None) -> dict | None:
@@ -51,6 +51,7 @@ def job_read_payload(
     discarded_at: datetime | None,
     application_id: int | None,
     application_status: ApplicationStatus | None,
+    seen_at: datetime | None,
 ) -> dict:
     return {
         "id": job.id,
@@ -97,12 +98,15 @@ def job_read_payload(
         "has_application": application_id is not None,
         "application_id": application_id,
         "application_status": application_status,
+        "is_seen": seen_at is not None,
+        "seen_at": seen_at,
     }
 
 
 def get_job_with_user_state(db: Session, job_id: int, user_id: int | None) -> tuple | None:
     saved_join = and_(SavedJob.job_posting_id == JobPosting.id, SavedJob.user_id == user_id)
     discarded_join = and_(DiscardedJob.job_posting_id == JobPosting.id, DiscardedJob.user_id == user_id)
+    combined_state_join = and_(UserJobState.job_posting_id == JobPosting.id, UserJobState.user_id == user_id)
     latest_application_id = (
         select(func.max(Application.id))
         .where(
@@ -122,10 +126,12 @@ def get_job_with_user_state(db: Session, job_id: int, user_id: int | None) -> tu
             DiscardedJob.created_at,
             Application.id,
             ApplicationStatus,
+            UserJobState.seen_at,
         )
         .join(Source, Source.id == JobPosting.source_id)
         .outerjoin(SavedJob, saved_join)
         .outerjoin(DiscardedJob, discarded_join)
+        .outerjoin(UserJobState, combined_state_join)
         .outerjoin(Application, application_join)
         .outerjoin(ApplicationStatus, ApplicationStatus.id == Application.status_id)
         .where(JobPosting.id == job_id)

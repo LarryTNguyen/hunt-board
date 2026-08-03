@@ -601,7 +601,7 @@ class IngestionService:
         target.closed_at = None
         target.consecutive_missed_runs = 0
         target.last_seen_at = now
-        target.posted_at = job.posted_at or target.posted_at or target.first_seen_at
+        target.posted_at = job.posted_at
         target.source_updated_at = job.updated_at
         target.ranking_score = ranking.score
         target.ranking_reasons = ranking.reasons
@@ -658,7 +658,7 @@ class IngestionService:
         ranking: RankingResult,
     ) -> bool:
         location = cls._display_location(job)
-        expected_posted_at = job.posted_at or target.posted_at or target.first_seen_at
+        expected_posted_at = job.posted_at
         relevant_values = (
             (target.company_name, job.company_name),
             (target.title, job.title),

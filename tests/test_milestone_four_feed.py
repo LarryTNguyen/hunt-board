@@ -2,6 +2,8 @@ from __future__ import annotations
 
 from datetime import datetime, timedelta, timezone
 
+from sqlalchemy import select
+
 from hunt_board.db.models import (
     Application,
     ApplicationStatus,
@@ -10,6 +12,7 @@ from hunt_board.db.models import (
     SavedJob,
     Source,
     User,
+    UserJobState,
 )
 
 
@@ -109,3 +112,28 @@ def test_legacy_jobs_list_contract_remains_a_list(client, db_session) -> None:
     assert response.status_code == 200
     assert isinstance(response.json(), list)
     assert response.json()[0]["title"] == "Data Engineer"
+
+
+def test_job_seen_state_is_user_scoped_persisted_and_idempotent(client, db_session) -> None:
+    user, jobs = _seed(db_session)
+    target = jobs[3]
+    initial = client.get(f"/jobs/{target.id}").json()
+    assert initial["is_seen"] is False
+    assert initial["seen_at"] is None
+
+    first = client.post(f"/jobs/{target.id}/seen")
+    second = client.post(f"/jobs/{target.id}/seen")
+    assert first.status_code == second.status_code == 200
+    assert first.json()["is_seen"] is True
+    assert first.json()["seen_at"] == second.json()["seen_at"]
+
+    state = db_session.scalar(
+        select(UserJobState).where(
+            UserJobState.user_id == user.id,
+            UserJobState.job_posting_id == target.id,
+        )
+    )
+    assert state is not None
+    assert state.seen_at is not None
+    feed_item = client.get("/jobs/feed?q=rareword&application_state=any").json()["items"][0]
+    assert feed_item["is_seen"] is True

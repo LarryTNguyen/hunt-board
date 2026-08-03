@@ -35,6 +35,7 @@ export const api = {
   jobs: (params = {}) => request(`/jobs?${new URLSearchParams(Object.entries(params).filter(([, value]) => value !== '' && value !== undefined && value !== null))}`),
   discoveryFeed: (params = {}) => request(`/jobs/feed?${new URLSearchParams(Object.entries(params).filter(([, value]) => value !== '' && value !== undefined && value !== null))}`),
   job: (id) => request(`/jobs/${id}`),
+  markJobSeen: (id) => request(`/jobs/${id}/seen`, { method: 'POST', body: {} }),
   saveJob: (id, notes) => request(`/jobs/${id}/save`, { method: 'POST', body: notes === undefined ? {} : { notes } }),
   unsaveJob: (id) => request(`/jobs/${id}/save`, { method: 'DELETE' }),
   updateSaved: (id, notes) => request(`/saved-jobs/${id}`, { method: 'PATCH', body: { notes } }),

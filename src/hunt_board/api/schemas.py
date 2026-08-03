@@ -79,6 +79,8 @@ class JobPostingRead(BaseModel):
     has_application: bool = False
     application_id: int | None = None
     application_status: ApplicationStatusRead | None = None
+    is_seen: bool = False
+    seen_at: datetime | None = None
 
 
 class FacetEntryRead(BaseModel):

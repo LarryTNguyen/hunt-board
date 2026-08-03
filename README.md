@@ -58,9 +58,9 @@ defaults, statuses, and configured sources. It refuses to create an admin in pro
 configured ATS sources with `uv run hunt-board ingest`; Milestone 3 does not silently insert
 demo records.
 
-The daily starting point is `/app/dashboard.html`. It combines ingestion freshness, recent-job totals, new saved-route matches, the application pipeline, and follow-up candidates. `/app/saved-searches.html` creates and manages reusable discovery routes. A route's `last_viewed_at` is advanced only by **Mark reviewed**; jobs with `first_seen_at` after that timestamp count as new. A never-reviewed route treats all current matches as new.
+The daily starting point is `/app/dashboard.html`. It combines recent-job totals, new saved-route matches, the application pipeline, and follow-up candidates. `/app/saved-searches.html` creates and manages reusable discovery routes. A route's `last_viewed_at` is advanced only by **Mark reviewed**; jobs with `first_seen_at` after that timestamp count as new. A never-reviewed route treats all current matches as new.
 
-The live discovery desk at `/app/job-discovery.html` browses the complete server-paginated feed. Its search, source/ATS/country/location/workplace/salary/age/score filters, sort, page offset, view tab, and selected job are represented in the URL, so refresh and browser back/forward preserve the route. Use **Save this route** to persist the current filters. The operations desk at `/app/operations.html` shows ingestion status, source health/policy, recent run metrics, and confirmed manual actions.
+The live discovery desk at `/app/job-discovery.html` browses the complete server-paginated feed. Its search, source/ATS/country/location/workplace/salary/age/score filters, sort, page offset, view tab, and selected job are represented in the URL, so refresh and browser back/forward preserve the route. Opening a job's observation drawer calls `POST /jobs/{job_id}/seen`; the user-scoped `seen_at` marker changes New to Seen without requiring a save, application, or full-dossier visit. Use **Save this route** to persist the current filters. The operations desk at `/app/operations.html` shows ingestion status, source health/policy, recent run metrics, and confirmed manual actions.
 
 ### Saved searches and Daily Hunt API
 

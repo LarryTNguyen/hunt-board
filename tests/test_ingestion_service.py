@@ -1,6 +1,7 @@
 from __future__ import annotations
 
 import asyncio
+from datetime import datetime, timezone
 from decimal import Decimal
 from pathlib import Path
 
@@ -164,6 +165,27 @@ async def test_repeated_job_is_counted_unchanged_without_an_upsert(db_session) -
     )
     assert run.total_unchanged_jobs == 1
     assert source_run.unchanged_jobs == 1
+
+
+@pytest.mark.asyncio()
+async def test_posted_at_is_only_populated_from_the_ats(db_session) -> None:
+    without_posted_at = _job()
+    await IngestionService(
+        str(SOURCE_FILE), adapter_overrides={"acme": FakeAdapter([without_posted_at])}
+    ).run(db_session, ["acme"])
+
+    stored = db_session.scalar(select(JobPosting))
+    assert stored.posted_at is None
+
+    official_time = datetime(2026, 7, 1, 12, 30, tzinfo=timezone.utc)
+    with_posted_at = NormalizedJob(
+        **{**without_posted_at.__dict__, "posted_at": official_time}
+    )
+    await IngestionService(
+        str(SOURCE_FILE), adapter_overrides={"acme": FakeAdapter([with_posted_at])}
+    ).run(db_session, ["acme"])
+
+    assert stored.posted_at == official_time
 
 
 @pytest.mark.asyncio()

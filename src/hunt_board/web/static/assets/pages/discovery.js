@@ -181,7 +181,13 @@ function stateLabel(job) {
   if (job.has_application) return job.application_status?.name || 'Tracked';
   if (job.is_saved) return 'Saved';
   if (job.is_reposted) return 'Reposted';
+  if (job.is_seen) return 'Seen';
   return 'New';
+}
+
+function stateTone(job) {
+  if (job.has_application || job.is_saved) return '';
+  return job.is_seen ? 'status-viewing' : 'status-new';
 }
 
 function renderRows() {
@@ -199,14 +205,15 @@ function renderRows() {
   const body = table.querySelector('tbody');
   jobs.forEach((job) => {
     const row = document.createElement('tr');
+    row.dataset.jobId = job.id;
     row.tabIndex = 0;
     row.classList.toggle('is-selected', currentState.job === job.id);
     row.setAttribute('aria-label', `Open ${job.title} at ${job.company_name}`);
-    row.innerHTML = `<td><span class="status ${job.is_saved ? '' : 'status-new'}">${esc(currentState.tab === 'discarded' ? 'Hidden' : stateLabel(job))}</span></td>
+    row.innerHTML = `<td><span class="status ${stateTone(job)}">${esc(currentState.tab === 'discarded' ? 'Hidden' : stateLabel(job))}</span></td>
       <td><span class="ledger-title">${esc(job.title)}</span><span class="ledger-submeta">${esc(job.department || job.employment_type || 'General')}</span></td>
       <td><span class="company-lockup company-lockup-compact">${companyMark(job.company_name, job.company_logo_url)}<span>${esc(job.company_name)}</span></span></td><td>${esc(locationSummary(job))}</td>
       <td>${esc(country(job))}</td><td class="salary-cell">${esc(salary(job))}</td>
-      <td><span class="source-tag">${esc(job.source?.ats || job.source_slug)}</span></td><td><span class="match-score">${score(job.ranking_score)}</span></td><td>${esc(relativeDate(job.first_seen_at))}</td>`;
+      <td><span class="source-tag">${esc(job.source?.ats || job.source_slug)}</span></td><td><span class="match-score">${score(job.ranking_score)}</span></td><td>${esc(relativeDate(job.posted_at, 'Not provided'))}</td>`;
     const open = () => openDrawer(job);
     row.addEventListener('click', open);
     row.addEventListener('keydown', (event) => { if (event.key === 'Enter' || event.key === ' ') { event.preventDefault(); open(); } });
@@ -243,6 +250,19 @@ function populateFacets(facets) {
   populateSelect(controls.workplace, facets.workplace_types, 'Any arrangement', currentState.workplace);
 }
 
+async function persistSeen(job) {
+  try {
+    const updated = await api.markJobSeen(job.id);
+    job.is_seen = updated.is_seen;
+    job.seen_at = updated.seen_at;
+  } catch (error) {
+    job.is_seen = false;
+    job.seen_at = null;
+    renderRows();
+    makeToast(`Seen status could not be saved: ${error.message}`, 'error');
+  }
+}
+
 async function openDrawer(job, updateHistory = true) {
   if (updateHistory && currentState.job !== job.id) updateUrl({ job: job.id }, { resetOffset: false, load: false });
   const official = safeUrl(job.apply_url) || safeUrl(job.posting_url);
@@ -265,8 +285,14 @@ async function openDrawer(job, updateHistory = true) {
   drawer.querySelector('[data-discard]')?.addEventListener('click', (event) => mutate(event.currentTarget, async () => { await api.discardJob(job.id); makeToast('Job moved to the discard pile.'); closeDrawer(); await loadFeed(); }));
   drawer.querySelector('[data-restore]')?.addEventListener('click', (event) => mutate(event.currentTarget, async () => { await api.restoreJob(job.id); makeToast('Job restored to the daily route.'); closeDrawer(); await loadFeed(); }));
   drawer.querySelector('[data-track]')?.addEventListener('click', (event) => mutate(event.currentTarget, async () => { await api.createApplication(job.id); makeToast('Application added to the tracker and removed from discovery.'); closeDrawer(); await loadFeed(); }));
+  const shouldMarkSeen = !job.is_seen;
+  if (shouldMarkSeen) {
+    job.is_seen = true;
+    job.seen_at = new Date().toISOString();
+  }
   renderRows();
   drawer.querySelector('[data-close]').focus();
+  if (shouldMarkSeen) void persistSeen(job);
 }
 
 async function mutate(button, callback) {

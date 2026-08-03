@@ -103,3 +103,32 @@ def test_saved_job_cards_can_move_directly_to_the_tracker(client) -> None:
     assert "safeUrl(item.job.apply_url)" in script
     assert "Open official posting" in script
     assert 'rel="noopener noreferrer"' in script
+
+
+def test_discovery_drawer_marks_a_job_seen_before_the_full_dossier(client) -> None:
+    discovery = client.get("/app/assets/pages/discovery.js").text
+    api_script = client.get("/app/assets/api.js").text
+    detail = client.get("/app/assets/pages/job-detail.js").text
+
+    assert "if (job.is_seen) return 'Seen'" in discovery
+    assert "const shouldMarkSeen = !job.is_seen" in discovery
+    assert "void persistSeen(job)" in discovery
+    assert "markJobSeen:" in api_script
+    assert "job = await api.markJobSeen(id)" in detail
+
+
+def test_discovery_seen_column_uses_the_official_posted_timestamp(client) -> None:
+    discovery = client.get("/app/assets/pages/discovery.js").text
+
+    assert "relativeDate(job.posted_at, 'Not provided')" in discovery
+    assert "relativeDate(job.first_seen_at))}</td>" not in discovery
+
+
+def test_inbox_open_sighting_marks_the_dispatch_read_before_navigation(client) -> None:
+    script = client.get("/app/assets/pages/notifications.js").text
+
+    assert "data-open-sighting" in script
+    assert "event.preventDefault()" in script
+    assert "await api.readNotification(item.id)" in script
+    assert "await refreshUnreadCount()" in script
+    assert "window.location.assign(href)" in script
