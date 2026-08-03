@@ -665,15 +665,15 @@ body.drawer-open .ledger td:nth-child(7) { display: none; }
 .dashboard-message { min-height: 20px; margin: -24px 0 -20px; color: var(--grid-olive); font: 500 9px/1.4 var(--font-data); text-transform: uppercase; letter-spacing: .05em; }
 .dashboard-panel { border: 1px solid var(--line-strong); background: var(--paper-light); box-shadow: 7px 7px 0 rgba(22,61,52,.07); }
 .route-card dt { color: var(--grid-olive); font: 500 8px/1.2 var(--font-data); text-transform: uppercase; }
-.daily-totals-grid { display: grid; grid-template-columns: repeat(6,minmax(0,1fr)); border: 1px solid var(--line-strong); background: var(--forest-ink); box-shadow: 7px 7px 0 var(--sun-yellow); }
+.daily-totals-grid { display: grid; grid-template-columns: repeat(6,minmax(0,1fr)); border: 1px solid var(--line-strong); background: var(--forest-ink); box-shadow: 7px 7px 0 var(--signal-orange); }
 .daily-totals-grid > div { min-height: 118px; padding: 17px; display: flex; flex-direction: column; justify-content: space-between; border-right: 1px solid rgba(251,248,239,.25); }
 .daily-totals-grid > div:last-child { border-right: 0; }
 .daily-totals-grid small { color: var(--paper-light); font: 500 8px/1.3 var(--font-data); text-transform: uppercase; }
-.daily-totals-grid strong { color: var(--sun-yellow); font: 700 clamp(30px,4vw,48px)/.9 var(--font-display); }
+.daily-totals-grid strong { color: var(--paper-light); font: 700 clamp(30px,4vw,48px)/.9 var(--font-display); }
 .route-card-grid { display: grid; grid-template-columns: repeat(3,minmax(0,1fr)); gap: 16px; }
 .route-card { position: relative; min-width: 0; padding: 20px; border: 1px solid var(--line-strong); background: var(--paper-light); box-shadow: 5px 5px 0 rgba(22,61,52,.06); }
 .route-card::before { content: ''; position: absolute; inset: 0 0 auto; height: 5px; background: var(--grid-olive); }
-.route-card.is-default::before { background: var(--sun-yellow); }
+.route-card.is-default::before { background: var(--signal-orange); }
 .route-card.is-selected { box-shadow: 7px 7px 0 var(--signal-orange); }
 .route-card-head { display: flex; justify-content: space-between; gap: 12px; color: var(--signal-orange); font: 500 9px/1.3 var(--font-data); text-transform: uppercase; }
 .route-card h3 { margin: 20px 0 8px; color: var(--forest-ink); font: 700 30px/1 var(--font-display); overflow-wrap: anywhere; }
