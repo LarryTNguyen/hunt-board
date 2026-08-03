@@ -133,6 +133,22 @@ def test_html_sanitizer_keeps_formatting_and_removes_active_content() -> None:
     assert sanitize_html("<p>Malformed <em>but useful") == "<p>Malformed <em>but useful</em></p>"
 
 
+def test_html_sanitizer_decodes_greenhouse_escaped_markup() -> None:
+    escaped = (
+        "&amp;lt;div class=&amp;quot;content-intro&amp;quot;&amp;gt;"
+        "&amp;lt;p&amp;gt;Build Discord communities.&amp;lt;/p&amp;gt;"
+        "&amp;lt;script&amp;gt;alert(1)&amp;lt;/script&amp;gt;"
+        "&amp;lt;/div&amp;gt;"
+    )
+
+    clean_html, clean_text = sanitized_description(escaped)
+
+    assert clean_html == "<p>Build Discord communities.</p>"
+    assert clean_text == "Build Discord communities."
+    assert "&lt;p" not in clean_html
+    assert "script" not in clean_html
+
+
 @pytest.mark.asyncio()
 async def test_ingestion_sanitizes_normalized_fields_but_preserves_raw_json(db_session) -> None:
     unsafe = '<p onclick="x()">Hello</p><script>bad()</script>'

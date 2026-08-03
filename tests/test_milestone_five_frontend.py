@@ -6,7 +6,6 @@ def test_dashboard_page_and_script_are_served(client) -> None:
     assert page.status_code == 200
     for marker in (
         "data-dashboard",
-        "data-freshness-summary",
         "data-daily-totals",
         "data-search-summary",
         "data-new-matches",
@@ -15,6 +14,7 @@ def test_dashboard_page_and_script_are_served(client) -> None:
         "data-dashboard-message",
     ):
         assert marker in page.text
+    assert "Source signal" not in page.text
     assert client.get("/app/assets/pages/dashboard.js").status_code == 200
 
 

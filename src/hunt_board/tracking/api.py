@@ -91,6 +91,10 @@ def _application_payload(
 def list_saved_jobs(
     limit: int = Query(default=50, ge=1, le=200),
     offset: int = Query(default=0, ge=0),
+    q: str | None = Query(default=None, max_length=200),
+    company: str | None = Query(default=None, max_length=200),
+    location: str | None = Query(default=None, max_length=200),
+    sort: str = Query(default="recent", pattern="^(recent|score|oldest)$"),
     user: User = Depends(require_user),
     db: Session = Depends(get_db),
 ) -> list[dict]:
@@ -104,17 +108,35 @@ def list_saved_jobs(
         .scalar_subquery()
     )
     application_join = Application.id == latest_application_id
-    rows = db.execute(
+    statement = (
         select(SavedJob, JobPosting, Source, ApplicationStatus)
         .join(JobPosting, JobPosting.id == SavedJob.job_posting_id)
         .join(Source, Source.id == JobPosting.source_id)
         .outerjoin(Application, application_join)
         .outerjoin(ApplicationStatus, ApplicationStatus.id == Application.status_id)
         .where(SavedJob.user_id == user.id)
-        .order_by(SavedJob.created_at.desc(), SavedJob.id.desc())
-        .offset(offset)
-        .limit(limit)
-    ).all()
+    )
+    if q and (keyword := q.strip()):
+        term = f"%{keyword}%"
+        statement = statement.where(
+            or_(
+                JobPosting.title.ilike(term),
+                JobPosting.company_name.ilike(term),
+                JobPosting.location.ilike(term),
+                JobPosting.source_slug.ilike(term),
+            )
+        )
+    if company and (company_term := company.strip()):
+        statement = statement.where(JobPosting.company_name.ilike(f"%{company_term}%"))
+    if location and (location_term := location.strip()):
+        statement = statement.where(JobPosting.location.ilike(f"%{location_term}%"))
+    if sort == "score":
+        statement = statement.order_by(JobPosting.ranking_score.desc(), SavedJob.created_at.desc(), SavedJob.id.desc())
+    elif sort == "oldest":
+        statement = statement.order_by(SavedJob.created_at.asc(), SavedJob.id.asc())
+    else:
+        statement = statement.order_by(SavedJob.created_at.desc(), SavedJob.id.desc())
+    rows = db.execute(statement.offset(offset).limit(limit)).all()
     return [
         {
             "id": saved.id,

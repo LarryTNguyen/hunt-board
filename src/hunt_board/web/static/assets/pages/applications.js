@@ -41,7 +41,7 @@ function render() {
     return;
   }
   const roll = document.createElement('div');
-  roll.className = 'film-roll';
+  roll.className = 'film-roll live-film-roll';
   const table = document.createElement('div');
   table.className = 'film-table live-film-table';
   table.innerHTML = '<div class="film-head"><span>Job / Company</span><span>Location</span><span>Stage</span><span>Date applied</span><span>Updated</span><span>Notes</span><span>Timeline</span></div>';

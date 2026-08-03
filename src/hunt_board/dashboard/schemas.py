@@ -1,20 +1,10 @@
 from __future__ import annotations
 
 from datetime import datetime
-from typing import Literal
-
 from pydantic import BaseModel, Field
 
 from hunt_board.api.schemas import ApplicationStatusRead, JobPostingRead, JobSummaryRead
 from hunt_board.searches.schemas import SavedSearchRead
-
-
-class DailyFreshnessRead(BaseModel):
-    status: Literal["ok", "degraded", "stale"]
-    last_successful_at: datetime | None
-    due_sources: int
-    unhealthy_sources: int
-    run_in_progress: bool
 
 
 class DailyTotalsRead(BaseModel):
@@ -49,7 +39,6 @@ class FollowUpCandidateRead(BaseModel):
 
 class DailyDashboardRead(BaseModel):
     generated_at: datetime
-    freshness: DailyFreshnessRead
     totals: DailyTotalsRead
     saved_searches: list[SavedSearchRead] = Field(default_factory=list)
     top_new_matches: list[JobPostingRead] = Field(default_factory=list)

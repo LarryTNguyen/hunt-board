@@ -1,6 +1,7 @@
 from __future__ import annotations
 
-from html import escape
+import re
+from html import escape, unescape
 from urllib.parse import urlsplit
 
 from lxml import etree, html
@@ -58,11 +59,29 @@ TEXT_BOUNDARY_TAGS = {
     "pre",
     "ul",
 }
+ENCODED_MARKUP = re.compile(
+    r"&(?:amp;)*lt;/?(?:a|blockquote|br|div|em|h[1-6]|li|ol|p|section|span|strong|ul)\b",
+    re.IGNORECASE,
+)
+
+
+def _decode_encoded_markup(value: str) -> str:
+    """Decode ATS payloads that entity-escape an entire HTML fragment."""
+    decoded = value
+    for _ in range(3):
+        if not ENCODED_MARKUP.search(decoded):
+            break
+        next_value = unescape(decoded)
+        if next_value == decoded:
+            break
+        decoded = next_value
+    return decoded
 
 
 def sanitize_html(value: str | None) -> str | None:
     if not value or not value.strip():
         return None
+    value = _decode_encoded_markup(value)
     try:
         root = html.fragment_fromstring(value, create_parent="div")
     except (etree.ParserError, ValueError):

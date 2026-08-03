@@ -49,4 +49,5 @@ def test_operations_frontend_contract_is_served(client) -> None:
     assert script.status_code == 200
     assert "api.runDueSources" in script.text
     assert "/app/operations.html" in navigation.text
-    assert all(marker in discovery.text for marker in ("data-source", "data-ats", "data-workplace", "data-pagination", "data-freshness"))
+    assert all(marker in discovery.text for marker in ("data-source", "data-ats", "data-workplace", "data-pagination"))
+    assert "data-freshness" not in discovery.text

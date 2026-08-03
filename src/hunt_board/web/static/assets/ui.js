@@ -69,6 +69,32 @@ export function element(tag, options = {}, children = []) {
   return node;
 }
 
-export function loading(target, message = 'Reading field records…') {
-  target.replaceChildren(element('div', { className: 'loading-state', role: 'status', text: message }));
+function skeletonKind(target, requested) {
+  if (requested !== 'auto') return requested;
+  if (target.matches('[data-detail], [data-dialog-content], [data-comparison]')) return 'dossier';
+  if (target.matches('[data-board], [data-search-list], [data-source-board]')) return 'cards';
+  if (target.matches('[data-results], [data-tracker], [data-run-list], [data-list], [data-queue]')) return 'ledger';
+  return 'panel';
+}
+
+export function loading(target, message = 'Reading field records…', variant = 'auto') {
+  const kind = skeletonKind(target, variant);
+  const state = element('div', {
+    className: `skeleton-state skeleton-${kind}`,
+    role: 'status',
+    'aria-label': message,
+  });
+  state.append(element('span', { className: 'sr-only', text: message }));
+  const count = kind === 'dossier' ? 2 : kind === 'cards' ? 3 : kind === 'ledger' ? 5 : 1;
+  for (let index = 0; index < count; index += 1) {
+    const item = element('div', { className: 'skeleton-item', 'aria-hidden': 'true' });
+    item.append(
+      element('i', { className: 'skeleton-line skeleton-line-label' }),
+      element('i', { className: 'skeleton-line skeleton-line-title' }),
+      element('i', { className: 'skeleton-line skeleton-line-copy' }),
+      element('i', { className: 'skeleton-line skeleton-line-short' }),
+    );
+    state.append(item);
+  }
+  target.replaceChildren(state);
 }

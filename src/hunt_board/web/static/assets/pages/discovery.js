@@ -13,7 +13,6 @@ const scoreValues = new Set(['60', '70', '80', '90']);
 const results = document.querySelector('[data-results]');
 const drawer = document.querySelector('[data-drawer]');
 const count = document.querySelector('[data-count]');
-const freshness = document.querySelector('[data-freshness]');
 const pagination = document.querySelector('[data-pagination]');
 const pageSummary = document.querySelector('[data-page-summary]');
 const previousButton = document.querySelector('[data-previous]');
@@ -77,6 +76,10 @@ function locationSummary(job) {
 
 function allLocations(job) {
   const locations = Array.isArray(job.locations) ? job.locations.filter((item) => item?.display) : [];
+  const remote = String(job.workplace_type || '').toLowerCase() === 'remote'
+    || locations.some((item) => /\bremote\b/i.test(item.display))
+    || /\bremote\b/i.test(String(job.location || ''));
+  if (remote) return 'Remote';
   return locations.length ? locations.map((item) => item.display).join(' / ') : (job.location || 'Not listed');
 }
 
@@ -317,23 +320,6 @@ async function loadFeed() {
   }
 }
 
-async function loadFreshness() {
-  try {
-    const health = await api.ingestionHealth();
-    if (health.status === 'ok') {
-      freshness.textContent = health.last_successful_at ? `Last successful refresh ${relativeDate(health.last_successful_at)}` : 'No successful refresh has been recorded yet';
-      freshness.dataset.state = 'ok';
-    } else {
-      const attention = health.unhealthy_sources + health.stale_running_runs;
-      freshness.textContent = `${attention || health.due_sources} source${attention === 1 ? '' : 's'} need attention; listings may be incomplete`;
-      freshness.dataset.state = 'degraded';
-    }
-  } catch {
-    freshness.textContent = 'Refresh status unavailable; job browsing is still available';
-    freshness.dataset.state = 'unknown';
-  }
-}
-
 function clearAll() {
   window.history.pushState({}, '', window.location.pathname);
   currentState = readState();
@@ -375,5 +361,4 @@ try {
 } catch {
   topThreshold = 90;
 }
-loadFreshness();
 loadFeed();

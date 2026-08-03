@@ -15,6 +15,8 @@ const authState = {
   configured: false,
 };
 
+document.documentElement.setAttribute('aria-busy', 'true');
+
 function signInUrl(reason = '') {
   const target = `${location.pathname}${location.search}`;
   const params = new URLSearchParams({ next: target });
@@ -113,6 +115,14 @@ export async function authenticatedFetch(path, options = {}) {
 
 export async function guardCurrentPage() {
   await initializeAuth();
+  if (location.pathname === '/app/sign-in.html' && authState.session && authState.profile) {
+    const candidate = new URLSearchParams(location.search).get('next');
+    const target = candidate?.startsWith('/app/') && !candidate.startsWith('/app/sign-in.html')
+      ? candidate
+      : '/app/dashboard.html';
+    location.replace(target);
+    return false;
+  }
   if (!PUBLIC_PATHS.has(location.pathname) && !authState.session) {
     location.replace(signInUrl(authState.profileError ? 'denied' : 'required'));
     return false;
@@ -122,6 +132,8 @@ export async function guardCurrentPage() {
     return false;
   }
   document.documentElement.dataset.session = authState.session ? 'authenticated' : 'anonymous';
+  document.documentElement.dataset.authReady = 'true';
+  document.documentElement.removeAttribute('aria-busy');
   return true;
 }
 
@@ -163,4 +175,8 @@ export async function sendMagicLink(email) {
   if (result.error) throw result.error;
 }
 
-void guardCurrentPage();
+void guardCurrentPage().catch((error) => {
+  document.documentElement.dataset.authReady = 'error';
+  document.documentElement.removeAttribute('aria-busy');
+  console.error('Hunt Board could not resolve the current session.', error);
+});

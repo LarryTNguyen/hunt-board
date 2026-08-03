@@ -1,10 +1,9 @@
 import '../navigation.js?v=20260727-5';
 import { api } from '../api.js?v=20260727-5';
 import { escapeHtml as esc, relativeDate, salary, score } from '../format.js?v=20260721-2';
-import { makeToast, renderEmpty, renderError, setBusy } from '../ui.js?v=20260721-1';
+import { loading, makeToast, renderEmpty, renderError, setBusy } from '../ui.js?v=20260721-1';
 
 const message = document.querySelector('[data-dashboard-message]');
-const freshnessHost = document.querySelector('[data-freshness-content]');
 const totalsHost = document.querySelector('[data-totals-content]');
 const searchesHost = document.querySelector('[data-search-content]');
 const matchesHost = document.querySelector('[data-match-content]');
@@ -13,14 +12,6 @@ const followupHost = document.querySelector('[data-followup-content]');
 
 function routeHref(search) {
   return `/app/saved-searches.html?search=${search.id}`;
-}
-
-function renderFreshness(freshness) {
-  const tone = freshness.status === 'ok' ? 'tone-positive' : 'tone-negative';
-  freshnessHost.innerHTML = `<div class="freshness-banner ${tone}">
-    <div><span class="status ${freshness.status === 'ok' ? '' : 'status-new'}">${esc(freshness.status)}</span><strong>${freshness.run_in_progress ? 'Refresh in progress' : freshness.status === 'ok' ? 'Sources reporting normally' : 'Source attention needed'}</strong></div>
-    <dl><div><dt>Last success</dt><dd>${esc(freshness.last_successful_at ? relativeDate(freshness.last_successful_at) : 'Not recorded')}</dd></div><div><dt>Due sources</dt><dd>${freshness.due_sources}</dd></div><div><dt>Unhealthy</dt><dd>${freshness.unhealthy_sources}</dd></div></dl>
-  </div>`;
 }
 
 function renderTotals(totals) {
@@ -97,9 +88,13 @@ async function handleMatchAction(event) {
 
 async function loadDashboard() {
   message.textContent = 'Preparing today’s field report…';
+  loading(totalsHost, 'Counting today’s field records…', 'ledger');
+  loading(searchesHost, 'Reading saved routes…', 'cards');
+  loading(matchesHost, 'Plotting new route matches…', 'ledger');
+  loading(pipelineHost, 'Reading the application pipeline…', 'ledger');
+  loading(followupHost, 'Checking follow-up candidates…', 'ledger');
   try {
     const payload = await api.dailyDashboard();
-    renderFreshness(payload.freshness);
     renderTotals(payload.totals);
     renderSearches(payload.saved_searches);
     renderMatches(payload.top_new_matches);
@@ -108,7 +103,7 @@ async function loadDashboard() {
     message.textContent = `Field report updated ${relativeDate(payload.generated_at)}.`;
   } catch (error) {
     message.textContent = 'The daily report could not be loaded.';
-    renderError(freshnessHost, error, loadDashboard);
+    renderError(totalsHost, error, loadDashboard);
   }
 }
 

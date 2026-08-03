@@ -27,7 +27,13 @@ function busy(form, value) {
 }
 
 async function start() {
-  const auth = await getAuthState();
+  let auth;
+  try {
+    auth = await getAuthState();
+  } catch (error) {
+    show(error.message || 'Authentication is temporarily unavailable.', 'error');
+    return;
+  }
   if (auth.session && auth.profile) {
     location.replace(nextPath());
     return;

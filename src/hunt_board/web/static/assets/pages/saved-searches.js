@@ -1,7 +1,7 @@
 import '../navigation.js?v=20260727-5';
 import { api } from '../api.js?v=20260727-5';
 import { escapeHtml as esc, relativeDate, salary, score } from '../format.js?v=20260721-2';
-import { makeToast, renderEmpty, renderError, setBusy } from '../ui.js?v=20260721-1';
+import { loading, makeToast, renderEmpty, renderError, setBusy } from '../ui.js?v=20260721-1';
 
 const form = document.querySelector('[data-search-form]');
 const listHost = document.querySelector('[data-search-list]');
@@ -108,7 +108,7 @@ function matchMarkup(job) {
 async function loadMatches() {
   if (!selectedId) return;
   matchesSection.hidden = false;
-  matchesHost.innerHTML = '<p class="loading-note">Reading route matches…</p>';
+  loading(matchesHost, 'Reading route matches…', 'ledger');
   try {
     const payload = await api.savedSearchMatches(selectedId, { limit: 100, new_only: newOnly.checked });
     matchTitle.textContent = `${payload.saved_search.name} · ${payload.total} match${payload.total === 1 ? '' : 'es'}`;
@@ -120,6 +120,7 @@ async function loadMatches() {
 }
 
 async function loadSearches() {
+  loading(listHost, 'Reading saved routes…', 'cards');
   try {
     searches = await api.savedSearches({ include_counts: true });
     if (selectedId && !searches.some((item) => item.id === selectedId)) selectedId = null;

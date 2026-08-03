@@ -3,11 +3,10 @@ from __future__ import annotations
 from datetime import datetime, timedelta, timezone
 
 from fastapi import APIRouter, Depends
-from sqlalchemy import and_, func, or_, select
+from sqlalchemy import and_, func, select
 from sqlalchemy.orm import Session
 
 from hunt_board.auth.dependencies import require_user
-from hunt_board.core.config import get_settings
 from hunt_board.dashboard.schemas import DailyDashboardRead
 from hunt_board.db.models import (
     Application,
@@ -18,7 +17,6 @@ from hunt_board.db.models import (
     Notification,
     SavedJob,
     SavedSearch,
-    ScrapeRun,
     Source,
     User,
     UserPreference,
@@ -38,62 +36,6 @@ router = APIRouter(prefix="/dashboard", tags=["dashboard"])
 
 def _count(db: Session, statement) -> int:
     return int(db.scalar(statement) or 0)
-
-
-def _freshness(db: Session, now: datetime) -> dict:
-    cutoff = now - timedelta(minutes=get_settings().stale_run_minutes)
-    last_run = db.scalar(
-        select(ScrapeRun)
-        .order_by(ScrapeRun.started_at.desc(), ScrapeRun.id.desc())
-        .limit(1)
-    )
-    stale_running = _count(
-        db,
-        select(func.count(ScrapeRun.id)).where(
-            ScrapeRun.status == "running",
-            ScrapeRun.started_at < cutoff,
-        ),
-    )
-    active_running = _count(
-        db,
-        select(func.count(ScrapeRun.id)).where(
-            ScrapeRun.status == "running",
-            ScrapeRun.started_at >= cutoff,
-        ),
-    )
-    due_sources = _count(
-        db,
-        select(func.count(Source.id)).where(
-            Source.enabled.is_(True),
-            or_(Source.next_due_at.is_(None), Source.next_due_at <= now),
-        ),
-    )
-    unhealthy_sources = _count(
-        db,
-        select(func.count(Source.id)).where(
-            Source.enabled.is_(True),
-            Source.health_status == "unhealthy",
-        ),
-    )
-    last_successful_at = db.scalar(
-        select(func.max(ScrapeRun.finished_at)).where(ScrapeRun.status == "completed")
-    )
-    if stale_running:
-        status = "stale"
-    elif unhealthy_sources or (
-        last_run
-        and last_run.status in {"failed", "abandoned", "completed_with_errors"}
-    ):
-        status = "degraded"
-    else:
-        status = "ok"
-    return {
-        "status": status,
-        "last_successful_at": last_successful_at,
-        "due_sources": due_sources,
-        "unhealthy_sources": unhealthy_sources,
-        "run_in_progress": bool(active_running),
-    }
 
 
 @router.get("/daily", response_model=DailyDashboardRead)
@@ -289,7 +231,6 @@ def daily_dashboard(
     }
     return {
         "generated_at": now,
-        "freshness": _freshness(db, now),
         "totals": totals,
         "saved_searches": search_payloads,
         "top_new_matches": top_new_matches,

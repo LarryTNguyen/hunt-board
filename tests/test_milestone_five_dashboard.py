@@ -84,7 +84,7 @@ def test_daily_dashboard_aggregates_and_dedupes(client, db_session) -> None:
     response = client.get("/dashboard/daily")
     assert response.status_code == 200
     payload = response.json()
-    assert payload["freshness"]["status"] in {"ok", "degraded", "stale"}
+    assert "freshness" not in payload
     assert payload["totals"]["active_jobs"] == 1
     assert payload["totals"]["active_saved_searches"] == 2
     assert len(payload["saved_searches"]) == 2

@@ -36,22 +36,31 @@ export function plainText(value) {
 
 export function descriptionText(descriptionHtml, descriptionTextValue) {
   const html = String(descriptionHtml || '').trim();
-  if (!html) return String(descriptionTextValue || '').trim();
+  const fallback = String(descriptionTextValue || '').trim();
+  let source = html || fallback;
+  if (!source) return '';
 
-  const documentFragment = new DOMParser().parseFromString(html, 'text/html');
-  documentFragment.body.querySelectorAll('br').forEach((breakElement) => breakElement.replaceWith('\n'));
-  documentFragment.body.querySelectorAll('li').forEach((item) => {
-    item.prepend('\u2022 ');
-    item.append('\n');
-  });
-  documentFragment.body.querySelectorAll('p, div, section, article, header, h1, h2, h3, h4, h5, h6, ul, ol, blockquote').forEach((block) => block.append('\n\n'));
+  for (let pass = 0; pass < 3; pass += 1) {
+    const documentFragment = new DOMParser().parseFromString(source, 'text/html');
+    documentFragment.body.querySelectorAll('br').forEach((breakElement) => breakElement.replaceWith('\n'));
+    documentFragment.body.querySelectorAll('li').forEach((item) => {
+      item.prepend('\u2022 ');
+      item.append('\n');
+    });
+    documentFragment.body.querySelectorAll('p, div, section, article, header, h1, h2, h3, h4, h5, h6, ul, ol, blockquote').forEach((block) => block.append('\n\n'));
 
-  return (documentFragment.body.textContent || '')
-    .replace(/\u00a0/g, ' ')
-    .replace(/[ \t]+\n/g, '\n')
-    .replace(/\n[ \t]+/g, '\n')
-    .replace(/\n{3,}/g, '\n\n')
-    .trim() || String(descriptionTextValue || '').trim();
+    const text = (documentFragment.body.textContent || '').trim();
+    if (!/<\/?(?:a|blockquote|br|div|em|h[1-6]|li|ol|p|section|span|strong|ul)\b[^>]*>/i.test(text)) {
+      return text
+        .replace(/\u00a0/g, ' ')
+        .replace(/[ \t]+\n/g, '\n')
+        .replace(/\n[ \t]+/g, '\n')
+        .replace(/\n{3,}/g, '\n\n')
+        .trim();
+    }
+    source = text;
+  }
+  return source.replace(/<[^>]+>/g, ' ').replace(/\s+/g, ' ').trim() || fallback;
 }
 
 export function safeUrl(value) {
