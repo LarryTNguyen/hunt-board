@@ -1,5 +1,6 @@
 import '../navigation.js?v=20260722-4';
 import { api } from '../api.js?v=20260722-4';
+import { getAuthState } from '../auth.js?v=20260729-1';
 import { absoluteDate, activateCompanyLogos, companyMark, country, escapeHtml as esc, label, plainText, rankingSignals, relativeDate, roleLevel, safeUrl, salary, score, truncate } from '../format.js?v=20260721-2';
 import { debounce, loading, makeToast, renderEmpty, renderError, setBusy } from '../ui.js?v=20260721-1';
 
@@ -19,6 +20,7 @@ const previousButton = document.querySelector('[data-previous]');
 const nextButton = document.querySelector('[data-next]');
 const saveRouteButton = document.querySelector('[data-save-route]');
 const relaxation = document.querySelector('[data-relaxation]');
+const publicNote = document.querySelector('[data-public-note]');
 const controls = {
   q: document.querySelector('[data-search]'),
   family: document.querySelector('[data-family]'),
@@ -40,6 +42,9 @@ let feed = null;
 let topThreshold = 90;
 let currentState = readState();
 let loadSequence = 0;
+const auth = await getAuthState();
+const isAnonymous = !auth.session;
+publicNote.hidden = !isAnonymous;
 
 function positiveInteger(value) {
   const parsed = Number.parseInt(value || '', 10);
@@ -194,6 +199,7 @@ async function saveCurrentRoute() {
 }
 
 function stateLabel(job) {
+  if (isAnonymous) return 'Public';
   if (job.has_application) return job.application_status?.name || 'Tracked';
   if (job.is_saved) return 'Saved';
   if (job.is_reposted) return 'Reposted';
@@ -295,7 +301,7 @@ async function openDrawer(job, updateHistory = true) {
     <div class="relevance-summary">${relevance.map((signal) => `<div><small>${esc(signal.label)}</small><strong>${esc(signal.value)}</strong></div>`).join('')}</div>
     <dl class="meta-list"><div><dt>Locations</dt><dd>${esc(allLocations(job))}</dd></div><div><dt>Country</dt><dd>${esc(country(job))}</dd></div><div><dt>Compensation</dt><dd>${esc(salary(job))}</dd></div><div><dt>Role level</dt><dd>${esc(roleLevel(job.title))}</dd></div><div><dt>Work arrangement</dt><dd>${esc(label(job.workplace_type, 'Not provided by source'))}</dd></div><div><dt>First seen</dt><dd>${esc(absoluteDate(job.first_seen_at))}</dd></div><div><dt>Source</dt><dd>${esc(job.source?.name || job.source_slug)}</dd></div></dl>
     <section class="drawer-section"><h3>Field excerpt</h3><p>${esc(truncate(plainText(job.description_text) || 'No description text was supplied by the source.', 480))}</p></section>
-    <div class="action-row drawer-actions">${currentState.tab === 'discarded' ? '<button class="button button-primary" type="button" data-restore>Restore to route</button>' : `${job.is_saved ? '<button class="button" type="button" data-unsave>Unsave</button>' : '<button class="button" type="button" data-save>Save</button>'}<button class="button" type="button" data-discard>Hide</button>${job.has_application ? '' : '<button class="button button-dark" type="button" data-track>Add to tracker</button>'}`}${official ? `<a class="button" href="${esc(official)}" target="_blank" rel="noopener noreferrer">Open official posting</a>` : ''}<a class="button button-primary" href="/app/job-detail.html?id=${job.id}">View full dossier</a></div></div>`;
+    <div class="action-row drawer-actions">${isAnonymous ? '<a class="button button-primary" href="/app/sign-in.html?next=%2Fapp%2Fjob-discovery.html">Sign in to save or track</a>' : `${currentState.tab === 'discarded' ? '<button class="button button-primary" type="button" data-restore>Restore to route</button>' : `${job.is_saved ? '<button class="button" type="button" data-unsave>Unsave</button>' : '<button class="button" type="button" data-save>Save</button>'}<button class="button" type="button" data-discard>Hide</button>${job.has_application ? '' : '<button class="button button-dark" type="button" data-track>Add to tracker</button>'}`}`} ${official ? `<a class="button" href="${esc(official)}" target="_blank" rel="noopener noreferrer">Open official posting</a>` : ''}${isAnonymous ? '' : `<a class="button button-primary" href="/app/job-detail.html?id=${job.id}">View full dossier</a>`}</div></div>`;
   drawer.querySelector('[data-close]').addEventListener('click', () => closeDrawer());
   activateCompanyLogos(drawer);
   drawer.querySelector('[data-save]')?.addEventListener('click', (event) => mutate(event.currentTarget, async () => { await api.saveJob(job.id); makeToast('Job saved to the field board.'); await loadFeed(); }));
@@ -303,7 +309,7 @@ async function openDrawer(job, updateHistory = true) {
   drawer.querySelector('[data-discard]')?.addEventListener('click', (event) => mutate(event.currentTarget, async () => { await api.discardJob(job.id); makeToast('Job moved to the discard pile.'); closeDrawer(); await loadFeed(); }));
   drawer.querySelector('[data-restore]')?.addEventListener('click', (event) => mutate(event.currentTarget, async () => { await api.restoreJob(job.id); makeToast('Job restored to the daily route.'); closeDrawer(); await loadFeed(); }));
   drawer.querySelector('[data-track]')?.addEventListener('click', (event) => mutate(event.currentTarget, async () => { await api.createApplication(job.id); makeToast('Application added to the tracker and removed from discovery.'); closeDrawer(); await loadFeed(); }));
-  const shouldMarkSeen = !job.is_seen;
+  const shouldMarkSeen = !isAnonymous && !job.is_seen;
   if (shouldMarkSeen) {
     job.is_seen = true;
     job.seen_at = new Date().toISOString();
@@ -348,7 +354,17 @@ async function loadFeed() {
   pagination.hidden = true;
   loading(results, currentState.tab === 'discarded' ? 'Opening the discard pile…' : 'Reading this route from the server…');
   try {
-    const payload = await api.discoveryFeed(feedParams());
+    const payload = isAnonymous
+      ? await api.publicJobs({ limit: 50 }).then((items) => ({
+        items,
+        total: items.length,
+        limit: 50,
+        offset: 0,
+        has_more: false,
+        facets: { sources: [], ats: [], countries: [], workplace_types: [], job_families: [], employment_types: [] },
+        relaxed_filters: [],
+      }))
+      : await api.discoveryFeed(feedParams());
     if (sequence !== loadSequence) return;
     feed = payload;
     jobs = payload.items;

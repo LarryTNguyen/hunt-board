@@ -1,6 +1,6 @@
 import '../navigation.js?v=20260731-1';
 import { api } from '../api.js?v=20260731-1';
-import { absoluteDate, companyMark, escapeHtml as esc, label, relativeDate } from '../format.js?v=20260721-2';
+import { absoluteDate, companyMark, escapeHtml as esc, label, relativeDate, safeUrl } from '../format.js?v=20260721-2';
 import { debounce, loading, makeToast, renderEmpty, renderError, setBusy } from '../ui.js?v=20260721-1';
 
 const host = document.querySelector('[data-tracker]');
@@ -16,6 +16,15 @@ let statuses = [];
 
 function trackedJob(item) {
   return item.job || { id: null, ...item.manual_job, company_logo_url: null };
+}
+
+function stageTone(item) {
+  const category = item.status?.standard_category;
+  if (['offer'].includes(category)) return 'positive';
+  if (['rejected', 'withdrawn'].includes(category)) return 'negative';
+  if (['interview', 'assessment'].includes(category)) return 'active';
+  if (category === 'archived') return 'muted';
+  return 'neutral';
 }
 
 function filtered() {
@@ -40,21 +49,21 @@ function render() {
   roll.className = 'film-roll live-film-roll';
   const table = document.createElement('div');
   table.className = 'film-table live-film-table';
-  table.innerHTML = '<div class="film-head"><span>Job / Company</span><span>Location</span><span>Stage</span><span>Started</span><span>Updated</span><span>Notes</span><span>Actions</span></div>';
+  table.innerHTML = '<div class="film-head"><span>Job / Company</span><span>Location</span><span>Stage</span><span>Started</span><span>Updated</span><span>Notes</span></div>';
   items.forEach((item) => {
     const job = trackedJob(item);
     const row = document.createElement('article');
-    row.className = 'film-row live-film-row';
-    const dossier = item.job ? `/app/job-detail.html?id=${item.job.id}` : '';
-    row.innerHTML = `<div class="film-cell film-role"><div class="company-lockup">${companyMark(job.company_name, job.company_logo_url)}<span><strong class="company-name">${esc(job.company_name)}</strong><span class="role-title">${esc(job.title)}</span><small>${item.manual_job ? `Private manual job · ${esc(label(job.job_family_slug))}` : 'Shared catalog job'}</small></span></div></div>
+    row.className = `film-row live-film-row status-tone-${stageTone(item)}`;
+    row.innerHTML = `<button class="film-cell film-role film-role-link" type="button" data-open aria-label="Open ${esc(job.title)} at ${esc(job.company_name)}"><div class="company-lockup">${companyMark(job.company_name, job.company_logo_url)}<span><strong class="company-name">${esc(job.company_name)}</strong><span class="role-title">${esc(job.title)}</span><small>${item.manual_job ? `Private manual job · ${esc(label(job.job_family_slug))}` : 'Shared catalog job'}</small></span></div></button>
       <div class="film-cell"><small>Location</small><strong>${esc(job.location || 'Not listed')}</strong></div>
       <div class="film-cell"><select class="film-edit-control" data-stage${item.deleted_at ? ' disabled' : ''}>${statuses.map((status) => `<option value="${esc(status.slug)}"${status.slug === item.status.slug ? ' selected' : ''}>${esc(status.name)}</option>`).join('')}</select><small>Reports as ${esc(label(item.status.standard_category))}</small></div>
       <div class="film-cell"><small>Started</small><strong>${esc(absoluteDate(item.created_at))}</strong></div>
       <div class="film-cell"><small>Last movement</small><strong>${esc(relativeDate(item.updated_at))}</strong></div>
       <div class="film-cell"><small>Field note</small><strong>${esc(item.notes || 'No note yet')}</strong></div>
-      <div class="film-cell action-row">${item.deleted_at ? '<button class="button" type="button" data-restore>Restore</button><button class="text-button" type="button" data-permanent>Delete permanently</button>' : '<button class="button button-dark" type="button" data-open>Open frame</button>'}${dossier ? `<a class="text-button" href="${dossier}">Job dossier</a>` : ''}</div>`;
+      <button class="tracker-delete-tab" type="button" data-delete-inline aria-label="Move application to Recently Deleted" title="Move to Recently Deleted"><span aria-hidden="true">&#128465;</span></button>`;
     row.querySelector('[data-stage]')?.addEventListener('change', (event) => updateStage(item, event.currentTarget));
     row.querySelector('[data-open]')?.addEventListener('click', () => openApplication(item));
+    row.querySelector('[data-delete-inline]')?.addEventListener('click', () => deleteApplication(item));
     row.querySelector('[data-restore]')?.addEventListener('click', () => restoreApplication(item));
     row.querySelector('[data-permanent]')?.addEventListener('click', () => permanentlyDelete(item));
     table.append(row);
@@ -69,12 +78,23 @@ async function updateStage(item, select) {
   catch (error) { makeToast(error.message, 'error'); await load(); }
 }
 
+async function deleteApplication(item) {
+  const job = trackedJob(item);
+  if (!confirm(`Move ${job.title} to Recently Deleted for 30 days?`)) return;
+  await api.deleteApplication(item.id);
+  makeToast('Application moved to Recently Deleted.');
+  await load();
+}
+
 function showDialog() { if (typeof dialog.showModal === 'function') dialog.showModal(); else dialog.setAttribute('open', ''); }
 function closeDialog() { if (typeof dialog.close === 'function') dialog.close(); else dialog.removeAttribute('open'); }
 
 async function openApplication(item) {
   const job = trackedJob(item);
-  dialogContent.innerHTML = `<div class="dialog-head"><div><p class="utility-label">Application frame / #${item.id}</p><h2>${esc(job.title)}</h2><p>${esc(job.company_name)} · ${esc(item.status.name)} · reports as ${esc(label(item.status.standard_category))}</p></div><button class="icon-button" type="button" data-close aria-label="Close">×</button></div><div class="dialog-grid"><section><label class="field-label" for="application-notes">Application notes</label><textarea class="notes-area" id="application-notes">${esc(item.notes || '')}</textarea><label class="field-label" for="application-link">Related link</label><input class="text-input" id="application-link" type="url" value="${esc(item.link_url || '')}" placeholder="https://"><div class="action-row"><button class="button button-primary" type="button" data-save>Save notes and link</button><button class="button button-danger" type="button" data-delete>Move to Recently Deleted</button></div><hr><h3>Record an event</h3><form data-event-form><label class="field-label" for="event-type">Event type</label><select class="select-field full-field" id="event-type" name="event_type"><option value="note">Note</option><option value="follow_up">Follow up</option><option value="online_assessment">Online assessment</option><option value="interview">Interview</option><option value="recruiter_contact">Recruiter contact</option><option value="rejection">Rejection</option><option value="offer">Offer</option></select><label class="field-label" for="event-notes">Event notes</label><textarea class="text-area" id="event-notes" name="notes" required></textarea><button class="button button-dark" type="submit">Add event</button></form></section><section><p class="section-label">Timeline</p><div data-timeline></div></section></div>`;
+  const dossier = item.job ? `/app/job-detail.html?id=${item.job.id}` : null;
+  const posting = safeUrl(item.job?.apply_url || item.manual_job?.posting_url);
+  const links = `${dossier ? `<a class="button button-dark" href="${dossier}">View job dossier</a>` : ''}${posting ? `<a class="button" href="${esc(posting)}" target="_blank" rel="noopener noreferrer">Official posting</a>` : ''}`;
+  dialogContent.innerHTML = `<div class="dialog-head"><div><p class="utility-label">Application frame / #${item.id}</p><h2>${esc(job.title)}</h2><p>${esc(job.company_name)} · ${esc(item.status.name)} · reports as ${esc(label(item.status.standard_category))}</p><div class="action-row dialog-job-links">${links}</div></div><button class="icon-button" type="button" data-close aria-label="Close">×</button></div><div class="dialog-grid"><section><label class="field-label" for="application-notes">Application notes</label><textarea class="notes-area" id="application-notes">${esc(item.notes || '')}</textarea><label class="field-label" for="application-link">Related link</label><input class="text-input" id="application-link" type="url" value="${esc(item.link_url || '')}" placeholder="https://"><div class="action-row"><button class="button button-primary" type="button" data-save>Save notes and link</button><button class="button button-danger" type="button" data-delete>Move to Recently Deleted</button></div><hr><h3>Record an event</h3><form data-event-form><label class="field-label" for="event-type">Event type</label><select class="select-field full-field" id="event-type" name="event_type"><option value="note">Note</option><option value="follow_up">Follow up</option><option value="online_assessment">Online assessment</option><option value="interview">Interview</option><option value="recruiter_contact">Recruiter contact</option><option value="rejection">Rejection</option><option value="offer">Offer</option></select><label class="field-label" for="event-notes">Event notes</label><textarea class="text-area" id="event-notes" name="notes" required></textarea><button class="button button-dark" type="submit">Add event</button></form></section><section><p class="section-label">Timeline</p><div data-timeline></div></section></div>`;
   dialogContent.querySelector('[data-close]').addEventListener('click', closeDialog);
   dialogContent.querySelector('[data-save]').addEventListener('click', async (event) => {
     setBusy(event.currentTarget, true);

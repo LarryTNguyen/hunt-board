@@ -111,10 +111,23 @@ def test_discovery_drawer_marks_a_job_seen_before_the_full_dossier(client) -> No
     detail = client.get("/app/assets/pages/job-detail.js").text
 
     assert "if (job.is_seen) return 'Seen'" in discovery
-    assert "const shouldMarkSeen = !job.is_seen" in discovery
+    assert "const shouldMarkSeen = !isAnonymous && !job.is_seen" in discovery
     assert "void persistSeen(job)" in discovery
     assert "markJobSeen:" in api_script
     assert "job = await api.markJobSeen(id)" in detail
+
+
+def test_signed_out_discovery_uses_the_public_catalog(client) -> None:
+    page = client.get("/app/job-discovery.html").text
+    discovery = client.get("/app/assets/pages/discovery.js").text
+    api_script = client.get("/app/assets/api.js").text
+
+    assert "Public discovery board" in page
+    assert "const isAnonymous = !auth.session" in discovery
+    assert "api.publicJobs({ limit: 50 })" in discovery
+    assert "Sign in to save or track" in discovery
+    assert "publicJobs:" in api_script
+    assert "/public/jobs?" in api_script
 
 
 def test_discovery_seen_column_uses_the_official_posted_timestamp(client) -> None:
