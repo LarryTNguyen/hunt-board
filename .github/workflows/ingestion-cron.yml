@@ -27,4 +27,7 @@ jobs:
       - uses: actions/checkout@v4
       - uses: astral-sh/setup-uv@v6
       - run: uv sync --frozen --no-dev
+      - run: uv run alembic upgrade head
+      - run: uv run hunt-board seed
+      - run: uv run hunt-board sync-sources
       - run: uv run hunt-board ingest
