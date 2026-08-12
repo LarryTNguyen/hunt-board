@@ -64,8 +64,18 @@ def test_admin_source_sync_api(client) -> None:
     response = client.post("/admin/sources/sync-from-yaml")
 
     assert response.status_code == 200
-    assert response.json()["created"] == 3
+    assert response.json()["created"] == 9
     sources = client.get("/admin/sources")
     assert sources.status_code == 200
-    assert {source["slug"] for source in sources.json()} == {"discord", "highlevel", "notion"}
+    assert {source["slug"] for source in sources.json()} == {
+        "discord",
+        "highlevel",
+        "notion",
+        "workday",
+        "figma",
+        "harvey",
+        "marketaxess",
+        "reformation",
+        "replit",
+    }
     assert all(source["company_logo_url"] for source in sources.json())

@@ -1,6 +1,6 @@
 # Hunt Board
 
-Hunt Board is a backend-first job intelligence and personal job-search CRM. It ingests curated Greenhouse, Lever, Ashby, and explicitly configured public Workday boards. Milestone 4.1 adds complete, safety-bounded Workday Candidate Experience JSON ingestion without browser automation or authenticated Workday APIs.
+Hunt Board is a backend-first job intelligence and personal job-search CRM. It ingests curated Greenhouse, Lever, Ashby, and explicitly configured public Workday boards. Milestone 6.2 adds production-safe environment validation, serialized two-hour scans with one pending slot, anomaly quarantine, auditable lifecycle closure/reactivation, correlated operations telemetry, and provider-neutral deployment/runbooks while preserving Supabase Auth, PostgreSQL RLS, and the safety-bounded Workday contract.
 
 ## Quick start with Docker
 
@@ -53,24 +53,49 @@ The files in `mock-designs/` are the archived static visual reference. Their sam
 preview interactions do not persist. The pages under `/app/` are the live product and read or
 write the database through the existing FastAPI routes.
 
-The normal seed command intentionally creates only the single-user defaults, statuses, and
-configured sources. To populate job data, run fixture-backed tests for development or ingest
+The normal seed command creates one deterministic local admin profile, accepted local invitation,
+defaults, statuses, and configured sources. It refuses to create an admin in production. To populate job data, run fixture-backed tests for development or ingest
 configured ATS sources with `uv run hunt-board ingest`; Milestone 3 does not silently insert
 demo records.
 
-The live discovery desk at `/app/job-discovery.html` browses the complete server-paginated feed. Its search, source/ATS/country/location/workplace/salary/age/score filters, sort, page offset, view tab, and selected job are represented in the URL, so refresh and browser back/forward preserve the route. The operations desk at `/app/operations.html` shows ingestion status, source health/policy, recent run metrics, and confirmed manual actions.
+The daily starting point is `/app/dashboard.html`. It combines recent-job totals, new saved-route matches, the application pipeline, and follow-up candidates. `/app/saved-searches.html` creates and manages reusable discovery routes. A route's `last_viewed_at` is advanced only by **Mark reviewed**; jobs with `first_seen_at` after that timestamp count as new. A never-reviewed route treats all current matches as new.
+
+The live discovery desk at `/app/job-discovery.html` browses the complete server-paginated feed. Its search, source/ATS/country/location/workplace/salary/age/score filters, sort, page offset, view tab, and selected job are represented in the URL, so refresh and browser back/forward preserve the route. Opening a job's observation drawer calls `POST /jobs/{job_id}/seen`; the user-scoped `seen_at` marker changes New to Seen without requiring a save, application, or full-dossier visit. Use **Save this route** to persist the current filters. The operations desk at `/app/operations.html` shows ingestion status, source health/policy, recent run metrics, and confirmed manual actions.
+
+Milestone 6.1 also supports fixed job families, desired titles, include/exclude terms and countries, employment type, sponsorship when known, salary floors, and excluded companies. The live UI requests controlled relaxation and labels broadened results; API clients opt in with `relax=true`. See `docs/milestone-6.1.md`.
+
+### Saved searches and Daily Hunt API
+
+- `GET/POST /saved-searches` lists or creates routes.
+- `GET/PATCH/DELETE /saved-searches/{id}` reads, updates, or removes a route.
+- `GET /saved-searches/{id}/matches` returns the feed-shaped matches; `new_only=true` restricts results to jobs first seen after review.
+- `POST /saved-searches/{id}/mark-reviewed` advances the review timestamp.
+- `GET /dashboard/daily` returns the read-only Daily Hunt aggregate.
+
+Seed creates one idempotent default route named `Daily Hunt` using the user's minimum score threshold. Notifications remain in-app only. Milestone 5 does not add resume analysis, AI matching, or email/push delivery.
 
 ## Configuration
 
 - `DATABASE_URL`: SQLAlchemy PostgreSQL URL. The host default uses port `55432`.
 - `HUNT_BOARD_SOURCES_PATH`: YAML source registry path; defaults to `data/sources.yaml`.
-- `HUNT_BOARD_DEFAULT_USER_EMAIL`: seeded single-user admin email.
-- `HUNT_BOARD_HTTP_TIMEOUT_SECONDS`: per-request ATS timeout; defaults to `10`.
+- `HUNT_BOARD_DEFAULT_USER_EMAIL`: deterministic local development admin profile email.
+- `HUNT_BOARD_ENVIRONMENT`: `development` by default; staging/production validate safe settings and production disables automatic admin creation.
+- `HUNT_BOARD_RELEASE`, `HUNT_BOARD_DEPLOYMENT_ID`, `HUNT_BOARD_PROCESS`, `HUNT_BOARD_PUBLIC_URL`: safe deployment identity shown in operations/logs.
+- `SUPABASE_URL`: public Supabase project URL used for JWKS and browser auth bootstrap.
+- `SUPABASE_ANON_KEY`: public anonymous client key; never substitute a service-role key.
+- `SUPABASE_JWT_AUDIENCE`: access-token audience; defaults to `authenticated`.
+- `SUPABASE_JWT_ISSUER`: optional issuer override; defaults to `SUPABASE_URL/auth/v1`.
+- `HUNT_BOARD_HTTP_TIMEOUT_SECONDS`: per-request ATS timeout; defaults to `30`.
 - `HUNT_BOARD_SOURCE_CONCURRENCY`: maximum ATS sources fetched at once; defaults to `5`.
 - `HUNT_BOARD_HTTP_MAX_RETRIES`: retries for timeouts, network failures, HTTP 408/429, and HTTP 5xx responses; defaults to `2`.
 - `HUNT_BOARD_HTTP_RETRY_BACKOFF_SECONDS`: base exponential retry delay; defaults to `0.5`.
+- `HUNT_BOARD_HTTP_RETRY_JITTER_SECONDS`: maximum random retry jitter; defaults to `0.25`.
+- `HUNT_BOARD_RUN_TIMEOUT_SECONDS`: whole-run deadline; defaults to `3600`.
+- `HUNT_BOARD_STALE_RUN_MINUTES`: stale active-run recovery threshold; defaults to `120`.
+- `HUNT_BOARD_ANOMALY_ZERO_QUARANTINE`, `HUNT_BOARD_ANOMALY_VOLUME_CHANGE_RATIO`, `HUNT_BOARD_ANOMALY_MASS_CHANGE_RATIO`: pre-reconciliation destructive-change safeguards.
+- `HUNT_BOARD_MAX_JOB_AGE_DAYS`: maximum active catalog age; defaults to `365`.
 - `HUNT_BOARD_SCHEDULER_ENABLED`: enables the separate scheduler command; defaults to `true`.
-- `HUNT_BOARD_SCHEDULER_INTERVAL_SECONDS`: seconds between scheduler ticks; defaults to `300`, minimum `10`.
+- `HUNT_BOARD_SCHEDULER_INTERVAL_SECONDS`: seconds between scheduler ticks; defaults to `7200`, minimum `10`.
 - `HUNT_BOARD_SCHEDULER_RUN_ON_STARTUP`: run one due-source tick immediately; defaults to `true`.
 
 The source registry supports the milestone shape (`company_name`, `company_logo_url`, `careers_url`, `ats_type`, `ats_slug`, high/medium/low `priority`, `enabled`, `categories`, and `notes`) and the existing explicit `config` shape. `company_logo_url` is the authoritative logo; the frontend falls back to company initials if it is absent or fails to load. ATS slugs are always manually configured; no scraping-based ATS detection is performed.
@@ -108,12 +133,16 @@ Synchronize and stage rollout with two dry runs:
 
 ```powershell
 uv run hunt-board sync-sources
+uv run hunt-board reclassify-jobs
+uv run hunt-board coverage-report
 uv run hunt-board ingest --source example-workday --dry-run
 uv run hunt-board ingest --source example-workday --dry-run
 uv run hunt-board ingest --source example-workday
 ```
 
 Compare listing counts and sample public URLs before setting `enabled: true`. Use a conservative cadence because each scan performs sequential listing-page requests plus one bounded detail request per job. Persistent access denial, unsupported response contracts, or bot protection fail clearly; Hunt Board does not bypass them with cookies, proxies, or browser automation.
+
+If a completely enumerated Workday listing contains an individual path whose detail remains unavailable after one reconciliation, Hunt Board records a `completed_with_errors` partial result and skips that path. Complete jobs may still be upserted, but missed-run counters and closure reconciliation are suppressed for the source so a partial scan cannot deactivate jobs.
 
 ## Database and source commands
 
@@ -158,14 +187,15 @@ uv run hunt-board purge-expired-raw
 ## API surface
 
 - `GET /health`, `GET /health/db`, `GET /health/live`, `GET /health/ready`, and `GET /health/ingestion`
-- `GET /jobs` and `GET /jobs/{job_id}`
+- `GET /public/jobs` for a limited safe sample; authenticated `GET /jobs` and `GET /jobs/{job_id}` retain compatibility
 - `GET /jobs/feed` for typed discovery items, total, pagination metadata, and self-excluding facets
 - `GET/PATCH /me/preferences` and `POST /me/preferences/rescore`
 - `GET /saved-jobs`, `POST/DELETE /jobs/{job_id}/save`, and `PATCH /saved-jobs/{saved_job_id}`
 - `GET /discarded-jobs` and `POST/DELETE /jobs/{job_id}/discard`
-- `GET /application-statuses`
+- `GET/POST /application-statuses` (custom stages require a standard category)
 - `GET /applications`, `POST /jobs/{job_id}/applications`, and `GET/PATCH /applications/{application_id}`
-- `DELETE /applications/{application_id}` to remove an accidentally tracked application and its events
+- `POST /manual-jobs` to create a private job/application transaction
+- `DELETE /applications/{application_id}` to enter Recently Deleted, plus `/restore` and `/permanent`
 - `GET/POST /applications/{application_id}/events`
 - `GET /notifications`, `PATCH /notifications/{notification_id}/read`, and `POST /notifications/read-all`
 - `GET /admin/sources`
@@ -176,6 +206,7 @@ uv run hunt-board purge-expired-raw
 - `POST /admin/ingestion/run-source/{source_id}`
 - `GET /admin/duplicates`
 - `PATCH /admin/duplicates/{duplicate_review_id}`
+- `PATCH /admin/jobs/{job_id}/classification` and `GET /admin/coverage`
 
 Legacy `/api/jobs`, `/api/admin/*`, and `/api/ingest/run` paths remain available.
 
@@ -249,4 +280,4 @@ $env:HUNT_BOARD_TEST_POSTGRES_URL='postgresql+psycopg://hunt_board:hunt_board@lo
 uv run pytest -m postgres tests/test_milestone_four_postgres.py
 ```
 
-See [architecture](docs/architecture.md), [Milestone 2 workflows](docs/milestone-2.md), [Milestone 3 frontend](docs/milestone-3.md), [Milestone 3.5](docs/milestone-3.5.md), [Milestone 4](docs/milestone-4.md), [Milestone 4.1](docs/milestone-4.1.md), and [ingestion pipeline](docs/ingestion-pipeline.md) for design details.
+See [architecture](docs/architecture.md), [Milestone 6.2](docs/milestone-6.2.md), [deployment](docs/deployment.md), [owner operations checklist](docs/owner-ui-checklist-6.2.md), [authentication setup](docs/auth-setup.md), and [ingestion pipeline](docs/ingestion-pipeline.md) for design and operating details.

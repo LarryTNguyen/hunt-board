@@ -1,6 +1,7 @@
 from __future__ import annotations
 
 import asyncio
+import random
 import ipaddress
 import math
 import re
@@ -13,7 +14,13 @@ from urllib.parse import urlsplit
 
 import httpx
 
-from hunt_board.ingestion.adapters.base import AdapterError, HttpATSAdapter, NormalizedJob, normalize_country
+from hunt_board.ingestion.adapters.base import (
+    AdapterError,
+    AdapterFetchResult,
+    HttpATSAdapter,
+    NormalizedJob,
+    normalize_country,
+)
 
 
 SUPPORTED_HOST_SUFFIXES = (".myworkdayjobs.com", ".myworkdaysite.com")
@@ -184,15 +191,24 @@ class WorkdayAdapter(HttpATSAdapter):
         client: httpx.AsyncClient,
         max_retries: int = 2,
         retry_backoff_seconds: float = 0.5,
+        retry_jitter_seconds: float = 0.25,
         *,
         sleep: Callable[[float], Awaitable[None]] = asyncio.sleep,
     ) -> None:
-        super().__init__(client, max_retries=max_retries, retry_backoff_seconds=retry_backoff_seconds)
+        super().__init__(
+            client,
+            max_retries=max_retries,
+            retry_backoff_seconds=retry_backoff_seconds,
+            retry_jitter_seconds=retry_jitter_seconds,
+        )
         self.sleep = sleep
         self._pace_lock = asyncio.Lock()
         self._last_request_started = 0.0
 
-    async def fetch_jobs(self, source: Any) -> list[NormalizedJob]:
+    async def fetch_jobs(
+        self,
+        source: Any,
+    ) -> list[NormalizedJob] | AdapterFetchResult:
         try:
             settings = validate_workday_source(source.careers_url, source.config)
         except ValueError as exc:
@@ -203,6 +219,7 @@ class WorkdayAdapter(HttpATSAdapter):
             return []
 
         details, withdrawn = await self._fetch_detail_set(settings, listings)
+        skipped_paths: set[str] = set()
         if withdrawn:
             reconciled = await self._complete_listing_scan(settings)
             current_paths = [item["externalPath"] for item in reconciled]
@@ -212,25 +229,40 @@ class WorkdayAdapter(HttpATSAdapter):
                 retry_listings = [item for item in reconciled if item["externalPath"] in unresolved]
                 retried, still_withdrawn = await self._fetch_detail_set(settings, retry_listings)
                 details.update(retried)
-                if still_withdrawn:
-                    raise AdapterError(
-                        "Workday detail remains unavailable for a path still present in the reconciled listing"
-                    )
-            new_listings = [item for item in reconciled if item["externalPath"] not in details]
+                skipped_paths.update(still_withdrawn)
+            new_listings = [
+                item
+                for item in reconciled
+                if item["externalPath"] not in details
+                and item["externalPath"] not in skipped_paths
+            ]
             if new_listings:
                 new_details, new_withdrawn = await self._fetch_detail_set(settings, new_listings)
-                if new_withdrawn:
-                    raise AdapterError("Workday board changed again during its single reconciliation cycle")
                 details.update(new_details)
+                skipped_paths.update(new_withdrawn)
             listings = reconciled
 
         jobs = [
             self._normalize(source, settings, listing, details[listing["externalPath"]], scan_time)
             for listing in listings
+            if listing["externalPath"] in details
         ]
         identities = [job.external_job_id for job in jobs]
         if len(identities) != len(set(identities)):
             raise AdapterError("Workday detail responses contain duplicate stable job identities")
+        if skipped_paths:
+            count = len(skipped_paths)
+            examples = ", ".join(sorted(skipped_paths)[:3])
+            warning = (
+                f"Skipped {count} Workday listing(s) with unavailable detail after reconciliation; "
+                f"lifecycle closure was suppressed. Paths: {examples}"
+            )
+            return AdapterFetchResult(
+                jobs=jobs,
+                lifecycle_authoritative=False,
+                skipped_count=count,
+                warning_message=warning,
+            )
         return jobs
 
     async def _complete_listing_scan(self, settings: WorkdaySettings) -> list[dict[str, Any]]:
@@ -283,7 +315,7 @@ class WorkdayAdapter(HttpATSAdapter):
                     raise AdapterError(
                         f"Workday board reports {total} jobs, exceeding config.max_jobs={settings.max_jobs}"
                     )
-            elif total != expected_total:
+            elif total != expected_total and not (total == 0 and bool(page)):
                 raise ListingIntegrityError(
                     f"Workday listing total changed from {expected_total} to {total}"
                 )
@@ -388,16 +420,23 @@ class WorkdayAdapter(HttpATSAdapter):
             try:
                 response = await self.client.request(method, url, headers=headers, json=json_body)
             except (httpx.TimeoutException, httpx.NetworkError) as exc:
+                if isinstance(exc, httpx.TimeoutException):
+                    self.timeout_count += 1
                 if attempt >= self.max_retries:
                     raise AdapterError(
                         f"Workday request failed after {attempt + 1} attempt(s): {exc}"
                     ) from exc
-                await self.sleep(self.retry_backoff_seconds * (2**attempt))
+                self.retry_count += 1
+                await self.sleep(
+                    self.retry_backoff_seconds * (2**attempt)
+                    + random.uniform(0, self.retry_jitter_seconds)
+                )
                 continue
             if response.status_code in withdrawal_statuses:
                 raise DetailWithdrawn(f"Workday detail returned {response.status_code}")
             if response.status_code in self.TRANSIENT_STATUS_CODES:
                 if attempt < self.max_retries:
+                    self.retry_count += 1
                     await self.sleep(self._retry_delay(response, attempt))
                     continue
                 if response.status_code == 429:

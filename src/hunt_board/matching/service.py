@@ -23,6 +23,16 @@ def preferences_from_row(preference: UserPreference) -> UserPreferences:
         country=preference.country,
         remote_allowed=preference.remote_allowed,
         minimum_score_threshold=preference.minimum_score_threshold,
+        selected_job_families=preference.selected_job_families,
+        related_job_families=preference.related_job_families,
+        desired_titles=preference.desired_titles,
+        preferred_countries=preference.preferred_countries,
+        excluded_countries=preference.excluded_countries,
+        workplace_preferences=preference.workplace_preferences,
+        employment_types=preference.employment_types,
+        sponsorship_required=preference.sponsorship_required,
+        minimum_salary=preference.minimum_salary,
+        excluded_companies=preference.excluded_companies,
     )
 
 
@@ -30,7 +40,18 @@ def ensure_user_preference(db: Session, user: User) -> UserPreference:
     preference = db.scalar(select(UserPreference).where(UserPreference.user_id == user.id))
     if preference is not None:
         return preference
-    defaults = UserPreferences.model_validate(user.preferences_json or {})
+    defaults = UserPreferences.model_validate(user.preferences_json) if user.preferences_json else UserPreferences(
+        include_keywords=[],
+        exclude_keywords=[],
+        role_groups=[],
+        preferred_levels=[],
+        preferred_locations=[],
+        home_location="",
+        radius_miles=0,
+        country="",
+        remote_allowed=True,
+        minimum_score_threshold=0,
+    )
     preference = UserPreference(user_id=user.id, **defaults.model_dump())
     db.add(preference)
     db.flush()

@@ -1,0 +1,56 @@
+<!doctype html>
+<html lang="en">
+<head>
+  <meta charset="utf-8">
+  <meta name="viewport" content="width=device-width,initial-scale=1">
+  <title>Sign in — Hunt Board</title>
+  <link rel="stylesheet" href="/app/assets/app.css">
+  <script type="module" src="/app/assets/pages/sign-in.js"></script>
+</head>
+<body class="auth-page">
+  <div data-app-nav=""></div>
+  <main class="auth-main" id="main-content">
+    <section class="field-pass" aria-labelledby="sign-in-title">
+      <div class="field-pass-mark" aria-hidden="true">
+        <span>HB / Beta</span>
+        <strong>Cleared<br>routes only</strong>
+        <div class="route-stamp">Invite required</div>
+      </div>
+      <div class="auth-panel">
+        <p class="coordinate">Field desk / Member access</p>
+        <h1 id="sign-in-title">Pick up your field pass</h1>
+        <p class="auth-lede">Hunt Board is an invite-only beta. Sign in with the exact email your invitation names.</p>
+
+        <div class="auth-status" data-auth-status role="status" aria-live="polite" hidden></div>
+
+        <button class="button button-dark auth-wide" type="button" data-google>
+          Continue with Google
+        </button>
+
+        <div class="auth-divider"><span>or use email</span></div>
+
+        <form data-password-form>
+          <label class="control-field">
+            <span>Email</span>
+            <input name="email" type="email" autocomplete="email" required>
+          </label>
+          <label class="control-field">
+            <span>Password</span>
+            <input name="password" type="password" autocomplete="current-password" required minlength="6">
+          </label>
+          <button class="button button-primary auth-wide" type="submit">Sign in with password</button>
+          <p class="auth-note">New password accounts must verify their email before Hunt Board activates the invitation.</p>
+        </form>
+
+        <form data-link-form class="magic-link-form">
+          <label class="control-field">
+            <span>Passwordless email</span>
+            <input name="email" type="email" autocomplete="email" required placeholder="you@example.com">
+          </label>
+          <button class="button button-quiet auth-wide" type="submit">Email me a sign-in link</button>
+        </form>
+      </div>
+    </section>
+  </main>
+</body>
+</html>

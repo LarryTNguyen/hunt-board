@@ -40,9 +40,36 @@ function renderList() {
   if (!items.length) { renderEmpty(list, notifications.length ? 'No dispatches of this kind' : 'The signal desk is quiet', notifications.length ? 'Choose another dispatch filter.' : 'New matches, reposts, and updates will appear here.'); return; }
   list.innerHTML = items.map((item) => {
     const copy = notificationCopy(item);
-    return `<article class="dispatch-item ${item.read_at ? '' : 'is-unread'}" data-id="${item.id}"><span class="dispatch-dot" aria-hidden="true"></span><div><p class="utility-label">${esc(label(item.kind))}${item.read_at ? ' / Read' : ' / Unread'}</p><h2>${esc(copy.title)}</h2><p>${esc(copy.body)}</p><div class="dispatch-actions">${item.job_posting_id ? `<a class="text-button" href="/app/job-detail.html?v=20260721-1&id=${item.job_posting_id}">Open sighting</a>` : ''}${item.read_at ? '' : '<button class="text-button" type="button" data-read>Mark read</button>'}</div></div><time class="dispatch-time" datetime="${esc(item.created_at)}">${esc(relativeDate(item.created_at))}</time></article>`;
+    return `<article class="dispatch-item ${item.read_at ? '' : 'is-unread'}" data-id="${item.id}"><span class="dispatch-dot" aria-hidden="true"></span><div><p class="utility-label">${esc(label(item.kind))}${item.read_at ? ' / Read' : ' / Unread'}</p><h2>${esc(copy.title)}</h2><p>${esc(copy.body)}</p><div class="dispatch-actions">${item.job_posting_id ? `<a class="text-button" data-open-sighting href="/app/job-detail.html?v=20260721-1&id=${item.job_posting_id}">Open sighting</a>` : ''}${item.read_at ? '' : '<button class="text-button" type="button" data-read>Mark read</button>'}</div></div><time class="dispatch-time" datetime="${esc(item.created_at)}">${esc(relativeDate(item.created_at))}</time></article>`;
   }).join('');
   list.querySelectorAll('[data-read]').forEach((button) => button.addEventListener('click', () => markRead(button.closest('[data-id]'), button)));
+  list.querySelectorAll('[data-open-sighting]').forEach((link) => {
+    const row = link.closest('[data-id]');
+    const item = notifications.find((entry) => entry.id === Number(row.dataset.id));
+    link.addEventListener('click', (event) => openSighting(event, item, link));
+  });
+}
+
+async function openSighting(event, item, link) {
+  if (item.read_at || event.button !== 0 || event.metaKey || event.ctrlKey || event.shiftKey || event.altKey) return;
+  event.preventDefault();
+  if (link.getAttribute('aria-busy') === 'true') return;
+
+  const href = link.href;
+  link.setAttribute('aria-busy', 'true');
+  link.setAttribute('aria-disabled', 'true');
+  try {
+    const updated = await api.readNotification(item.id);
+    const index = notifications.findIndex((entry) => entry.id === updated.id);
+    if (index !== -1) notifications[index] = updated;
+    renderList();
+    await refreshUnreadCount();
+    window.location.assign(href);
+  } catch (error) {
+    link.removeAttribute('aria-busy');
+    link.removeAttribute('aria-disabled');
+    makeToast(error.message, 'error');
+  }
 }
 
 async function markRead(row, button) {

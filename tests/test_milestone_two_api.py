@@ -177,6 +177,41 @@ def test_saved_job_workflow_is_idempotent_and_updates_job_state(client, db_sessi
     assert client.get(f"/jobs/{job.id}").json()["is_saved"] is False
 
 
+def test_saved_jobs_filter_sort_and_paginate(client, db_session) -> None:
+    source = _seed(db_session)
+    jobs = [
+        _job(
+            db_session,
+            source,
+            str(index),
+            f"Platform Engineer {index}",
+            company="Beta Labs" if index >= 10 else "Acme",
+            location="Seattle, WA" if index % 2 == 0 else "Remote, United States",
+            score=60 + index,
+        )
+        for index in range(12)
+    ]
+    db_session.commit()
+    for job in jobs:
+        assert client.post(f"/jobs/{job.id}/save", json={}).status_code == 200
+
+    first_page = client.get("/saved-jobs", params={"limit": 9}).json()
+    second_page = client.get("/saved-jobs", params={"limit": 9, "offset": 9}).json()
+    assert len(first_page) == 9
+    assert len(second_page) == 3
+    assert {item["id"] for item in first_page}.isdisjoint({item["id"] for item in second_page})
+
+    company_matches = client.get("/saved-jobs", params={"company": "beta"}).json()
+    location_matches = client.get("/saved-jobs", params={"location": "Seattle"}).json()
+    keyword_matches = client.get("/saved-jobs", params={"q": "Engineer 3"}).json()
+    score_sorted = client.get("/saved-jobs", params={"sort": "score"}).json()
+    assert len(company_matches) == 2
+    assert all(item["job"]["company_name"] == "Beta Labs" for item in company_matches)
+    assert len(location_matches) == 6
+    assert [item["job"]["title"] for item in keyword_matches] == ["Platform Engineer 3"]
+    assert score_sorted[0]["job"]["ranking_score"] == 71
+
+
 def test_application_tracker_status_events_and_filters(client, db_session) -> None:
     source = _seed(db_session)
     job = _job(db_session, source, "1", "Backend Engineer")

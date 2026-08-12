@@ -1,11 +1,13 @@
 from __future__ import annotations
 
 from datetime import datetime
+from decimal import Decimal
 from typing import Literal
 
 from pydantic import BaseModel, ConfigDict, Field, field_validator
 
 from hunt_board.matching.ranking import ROLE_GROUPS
+from hunt_board.jobs.classification import JOB_FAMILY_SLUGS
 
 
 class SourceSummaryRead(BaseModel):
@@ -25,6 +27,8 @@ class ApplicationStatusRead(BaseModel):
     slug: str
     sort_order: int
     is_terminal: bool
+    standard_category: str
+    is_custom: bool = False
 
 
 class JobLocationRead(BaseModel):
@@ -79,6 +83,17 @@ class JobPostingRead(BaseModel):
     has_application: bool = False
     application_id: int | None = None
     application_status: ApplicationStatusRead | None = None
+    is_seen: bool = False
+    seen_at: datetime | None = None
+    job_family_slug: str
+    classification_confidence: float
+    classification_method: str
+    classification_reason: str
+    classification_overridden_at: datetime | None = None
+    sponsorship_status: str = "unknown"
+    remote_scope: str = "not_remote"
+    match_type: Literal["strict", "relaxed"] = "strict"
+    relaxed_filters: list[str] = Field(default_factory=list)
 
 
 class FacetEntryRead(BaseModel):
@@ -93,6 +108,8 @@ class JobFeedFacetsRead(BaseModel):
     countries: list[FacetEntryRead] = Field(default_factory=list)
     workplace_types: list[FacetEntryRead] = Field(default_factory=list)
     salary_known: list[FacetEntryRead] = Field(default_factory=list)
+    job_families: list[FacetEntryRead] = Field(default_factory=list)
+    employment_types: list[FacetEntryRead] = Field(default_factory=list)
 
 
 class JobFeedRead(BaseModel):
@@ -103,6 +120,10 @@ class JobFeedRead(BaseModel):
     has_more: bool
     generated_at: datetime
     facets: JobFeedFacetsRead
+    strict_total: int = 0
+    relaxed_total: int = 0
+    relaxed_filters: list[str] = Field(default_factory=list)
+    relaxation_notice: str | None = None
 
 
 class JobSummaryRead(BaseModel):
@@ -125,6 +146,9 @@ class JobSummaryRead(BaseModel):
     duplicate_status: str
     duplicate_of_job_id: int | None
     reposted_at: datetime | None
+    job_family_slug: str
+    sponsorship_status: str = "unknown"
+    remote_scope: str = "not_remote"
 
 
 PREFERENCE_LIST_FIELDS = (
@@ -133,8 +157,21 @@ PREFERENCE_LIST_FIELDS = (
     "role_groups",
     "preferred_levels",
     "preferred_locations",
+    "selected_job_families",
+    "related_job_families",
+    "desired_titles",
+    "preferred_countries",
+    "excluded_countries",
+    "workplace_preferences",
+    "employment_types",
+    "excluded_companies",
 )
 SUPPORTED_LEVELS = {
+    "internship",
+    "co-op",
+    "new-grad",
+    "entry-level",
+    "experienced",
     "intern",
     "entry",
     "junior",
@@ -175,6 +212,16 @@ class UserPreferenceRead(BaseModel):
     country: str
     remote_allowed: bool
     minimum_score_threshold: float
+    selected_job_families: list[str]
+    related_job_families: list[str]
+    desired_titles: list[str]
+    preferred_countries: list[str]
+    excluded_countries: list[str]
+    workplace_preferences: list[str]
+    employment_types: list[str]
+    sponsorship_required: bool | None
+    minimum_salary: Decimal | None
+    excluded_companies: list[str]
     updated_at: datetime
 
 
@@ -191,6 +238,16 @@ class UserPreferenceUpdate(BaseModel):
     country: str | None = None
     remote_allowed: bool | None = None
     minimum_score_threshold: float | None = Field(default=None, ge=0, le=100)
+    selected_job_families: list[str] | None = None
+    related_job_families: list[str] | None = None
+    desired_titles: list[str] | None = None
+    preferred_countries: list[str] | None = None
+    excluded_countries: list[str] | None = None
+    workplace_preferences: list[str] | None = None
+    employment_types: list[str] | None = None
+    sponsorship_required: bool | None = None
+    minimum_salary: Decimal | None = Field(default=None, ge=0)
+    excluded_companies: list[str] | None = None
 
     @field_validator(*PREFERENCE_LIST_FIELDS)
     @classmethod
@@ -217,6 +274,28 @@ class UserPreferenceUpdate(BaseModel):
             raise ValueError(f"unsupported job levels: {', '.join(unsupported)}")
         return [level.casefold() for level in value]
 
+    @field_validator("selected_job_families", "related_job_families")
+    @classmethod
+    def validate_job_families(cls, value: list[str] | None) -> list[str] | None:
+        if value is None:
+            return None
+        normalized = [item.casefold().replace("_", "-") for item in value]
+        unsupported = sorted(set(normalized) - JOB_FAMILY_SLUGS)
+        if unsupported:
+            raise ValueError(f"unsupported job families: {', '.join(unsupported)}")
+        return normalized
+
+    @field_validator("workplace_preferences")
+    @classmethod
+    def validate_workplaces(cls, value: list[str] | None) -> list[str] | None:
+        if value is None:
+            return None
+        normalized = [item.casefold() for item in value]
+        unsupported = sorted(set(normalized) - {"remote", "hybrid", "on-site", "onsite"})
+        if unsupported:
+            raise ValueError(f"unsupported workplace preferences: {', '.join(unsupported)}")
+        return normalized
+
     @field_validator("home_location", "country")
     @classmethod
     def validate_required_text(cls, value: str | None) -> str | None:
@@ -236,6 +315,17 @@ class RescoreResponse(BaseModel):
     started_at: datetime
     finished_at: datetime
     duration_ms: int
+
+
+class OnboardingRead(BaseModel):
+    state: Literal["pending", "completed", "skipped"]
+    completed_at: datetime | None
+    skipped_at: datetime | None
+    preferences_help_relevance: bool
+
+
+class OnboardingUpdate(BaseModel):
+    action: Literal["complete", "skip", "reset"]
 
 
 class SavedJobCreate(BaseModel):
@@ -278,6 +368,8 @@ class ApplicationCreate(BaseModel):
 
     status: str | None = None
     notes: str | None = Field(default=None, max_length=20_000)
+    create_new: bool = False
+    link_url: str | None = Field(default=None, max_length=1000)
 
 
 class ApplicationUpdate(BaseModel):
@@ -286,6 +378,7 @@ class ApplicationUpdate(BaseModel):
     status: str | None = None
     notes: str | None = Field(default=None, max_length=20_000)
     status_note: str | None = Field(default=None, max_length=20_000)
+    link_url: str | None = Field(default=None, max_length=1000)
 
 
 ManualEventType = Literal[
@@ -323,18 +416,104 @@ class ApplicationEventRead(BaseModel):
 class ApplicationRead(BaseModel):
     id: int
     notes: str | None
+    link_url: str | None = None
+    deleted_at: datetime | None = None
+    purge_after: datetime | None = None
     created_at: datetime
     updated_at: datetime
     status: ApplicationStatusRead
-    job: JobSummaryRead
+    job: JobSummaryRead | None = None
+    manual_job: "ManualJobRead | None" = None
     source: SourceSummaryRead | None
     events: list[ApplicationEventRead] = Field(default_factory=list)
 
 
 class ApplicationDeleteResponse(BaseModel):
     application_id: int
-    job_id: int
+    job_id: int | None
     removed: bool
+    purge_after: datetime | None = None
+
+
+class ManualJobCreate(BaseModel):
+    model_config = ConfigDict(extra="forbid")
+
+    company_name: str = Field(min_length=1, max_length=255)
+    title: str = Field(min_length=1, max_length=500)
+    location: str | None = Field(default=None, max_length=500)
+    workplace_type: str | None = Field(default=None, max_length=120)
+    job_family_slug: str = "other"
+    posting_url: str | None = Field(default=None, max_length=1000)
+    apply_url: str | None = Field(default=None, max_length=1000)
+    notes: str | None = Field(default=None, max_length=20_000)
+    application_status: str = "applied"
+    application_notes: str | None = Field(default=None, max_length=20_000)
+    application_link: str | None = Field(default=None, max_length=1000)
+
+    @field_validator("job_family_slug")
+    @classmethod
+    def valid_family(cls, value: str) -> str:
+        normalized = value.casefold().replace("_", "-")
+        if normalized not in JOB_FAMILY_SLUGS:
+            raise ValueError("unsupported job family")
+        return normalized
+
+
+class ManualJobRead(BaseModel):
+    model_config = ConfigDict(from_attributes=True)
+
+    id: int
+    company_name: str
+    title: str
+    location: str | None
+    workplace_type: str | None
+    job_family_slug: str
+    posting_url: str | None
+    apply_url: str | None
+    notes: str | None
+    approval_status: str
+    created_at: datetime
+
+
+class ApplicationRestoreResponse(BaseModel):
+    application_id: int
+    restored: bool
+
+
+class ApplicationStatusCreate(BaseModel):
+    model_config = ConfigDict(extra="forbid")
+    name: str = Field(min_length=1, max_length=120)
+    standard_category: Literal["applied", "interview", "offer", "rejected", "withdrawn", "archived"]
+
+
+class PublicJobRead(BaseModel):
+    id: int
+    title: str
+    company_name: str
+    location: str | None
+    workplace_type: str | None
+    employment_type: str | None
+    job_family_slug: str
+    salary_min: float | None
+    salary_max: float | None
+    salary_currency: str | None
+    salary_interval: str | None
+    apply_url: str | None
+    posted_at: datetime | None
+
+
+class ClassificationOverrideUpdate(BaseModel):
+    model_config = ConfigDict(extra="forbid")
+    job_family_slug: str
+    reason: str = Field(min_length=1, max_length=500)
+
+    @field_validator("job_family_slug")
+    @classmethod
+    def classification_family(cls, value: str) -> str:
+        normalized = value.casefold().replace("_", "-")
+        if normalized not in JOB_FAMILY_SLUGS:
+            raise ValueError("unsupported job family")
+        return normalized
 
 
 class NotificationRead(BaseModel):
@@ -366,10 +545,16 @@ class SourceRunSummaryRead(BaseModel):
     upserted_count: int
     new_jobs: int
     updated_jobs: int
+    reactivated_jobs: int = 0
     unchanged_jobs: int
     closed_count: int
     duplicates_found: int
+    skipped_count: int
     error_count: int
+    retry_count: int = 0
+    timeout_count: int = 0
+    parser_failure_count: int = 0
+    quarantine_status: str | None = None
     error_message: str | None
     duration_ms: int
 
@@ -382,6 +567,7 @@ class IngestRunResponse(BaseModel):
     total_upserted: int
     total_new_jobs: int
     total_updated_jobs: int
+    total_reactivated_jobs: int = 0
     total_unchanged_jobs: int
     total_closed: int
     total_duplicates: int
@@ -398,6 +584,13 @@ class ScrapeRunRead(BaseModel):
     status: str
     dry_run: bool
     triggered_by: str
+    request_id: str | None = None
+    trace_id: str | None = None
+    environment: str = "development"
+    release: str = "development"
+    coalesced_triggers: int = 0
+    cancel_requested_at: datetime | None = None
+    cancelled_at: datetime | None = None
     sources_requested: list[str]
     total_sources_checked: int
     total_jobs_seen: int
@@ -426,6 +619,7 @@ class ScrapeSourceRunRead(BaseModel):
     jobs_seen: int
     new_jobs: int
     updated_jobs: int
+    reactivated_jobs: int = 0
     unchanged_jobs: int
     closed_jobs: int
     duplicates_found: int
@@ -433,6 +627,11 @@ class ScrapeSourceRunRead(BaseModel):
     upserted_count: int
     closed_count: int
     error_count: int
+    retry_count: int = 0
+    timeout_count: int = 0
+    parser_failure_count: int = 0
+    quarantine_status: str | None = None
+    trace_id: str | None = None
     error_message: str | None
     started_at: datetime
     finished_at: datetime | None
@@ -461,6 +660,8 @@ class SourceRead(BaseModel):
     last_successful_at: datetime | None
     last_error: str | None
     next_due_at: datetime | None
+    last_successful_job_count: int | None = None
+    quarantine_count: int = 0
 
 
 class SourceSyncRead(BaseModel):
@@ -471,6 +672,9 @@ class SourceSyncRead(BaseModel):
 
 class OperationsIngestionRead(BaseModel):
     run_in_progress: bool
+    active_run_id: int | None = None
+    pending_run_id: int | None = None
+    pending_coalesced_triggers: int = 0
     last_run: ScrapeRunRead | None
     last_successful_at: datetime | None
     next_due_at: datetime | None
@@ -498,6 +702,30 @@ class OperationsRead(BaseModel):
     sources: OperationsSourcesRead
     jobs: OperationsJobsRead
     recent_runs: list[ScrapeRunRead]
+    deployment: dict[str, str]
+    metrics: dict[str, int | float | str | None]
+
+
+class QuarantineRead(BaseModel):
+    model_config = ConfigDict(from_attributes=True)
+
+    id: int
+    scrape_run_id: int
+    scrape_source_run_id: int
+    source_id: int
+    source_slug: str
+    status: str
+    reason: str
+    diff_summary: dict
+    decided_at: datetime | None
+    decided_by_user_id: int | None
+    decision_note: str | None
+    created_at: datetime
+
+
+class QuarantineDecision(BaseModel):
+    model_config = ConfigDict(extra="forbid")
+    note: str | None = Field(default=None, max_length=500)
 
 
 class IngestionHealthLastRunRead(BaseModel):

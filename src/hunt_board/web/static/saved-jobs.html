@@ -1,1 +1,35 @@
-<!doctype html><html lang="en"><head><meta charset="utf-8"><meta name="viewport" content="width=device-width,initial-scale=1"><title>Saved jobs — Hunt Board</title><link rel="stylesheet" href="/app/assets/app.css?v=20260721-2"><script type="module" src="/app/assets/pages/saved-jobs.js?v=20260721-2"></script></head><body><div data-app-nav="saved"></div><main class="page-main" id="main-content"><div class="page-shell"><header class="page-intro"><div><p class="coordinate">Field board / Saved observations</p><h1>Work the shortlist</h1><p>Keep the opportunities worth returning to pinned with the context you need.</p></div><span class="preview-label">Live saved jobs</span></header><div class="toolbar"><label class="search-field"><span class="sr-only">Search saved jobs</span><input type="search" data-search placeholder="Search saved jobs"></label><select class="select-field" data-sort aria-label="Sort saved jobs"><option value="recent">Recently saved</option><option value="score">Highest match</option><option value="oldest">Oldest saved</option></select><span class="results-note" data-count></span></div><section class="board" data-board aria-live="polite"></section></div></main></body></html>
+<!doctype html>
+<html lang="en">
+<head>
+  <meta charset="utf-8">
+  <meta name="viewport" content="width=device-width,initial-scale=1">
+  <title>Saved jobs — Hunt Board</title>
+  <link rel="stylesheet" href="/app/assets/app.css?v=20260721-2">
+  <script type="module" src="/app/assets/pages/saved-jobs.js?v=20260802-1"></script>
+</head>
+<body>
+  <div data-app-nav="saved"></div>
+  <main class="page-main" id="main-content">
+    <div class="page-shell">
+      <header class="page-intro">
+        <div><p class="coordinate">Field board / Saved observations</p><h1>Work the shortlist</h1><p>Keep the opportunities worth returning to pinned with the context you need.</p></div>
+        <span class="preview-label">Live saved jobs</span>
+      </header>
+      <form class="toolbar saved-jobs-toolbar" data-filter-form>
+        <label class="search-field"><span class="sr-only">Search saved jobs by keyword</span><input type="search" data-search name="q" placeholder="Search keywords"></label>
+        <label class="saved-filter-field"><span>Company</span><input type="search" data-company name="company" placeholder="Any company"></label>
+        <label class="saved-filter-field"><span>Location</span><input type="search" data-location name="location" placeholder="Any location"></label>
+        <select class="select-field" data-sort name="sort" aria-label="Sort saved jobs"><option value="recent">Recently saved</option><option value="score">Highest match</option><option value="oldest">Oldest saved</option></select>
+        <button class="button button-quiet" type="button" data-clear>Clear filters</button>
+        <span class="results-note" data-count></span>
+      </form>
+      <section class="board" data-board aria-live="polite"></section>
+      <nav class="feed-pagination saved-jobs-pagination" data-pagination aria-label="Saved jobs pages">
+        <button class="button button-quiet" type="button" data-previous>Previous</button>
+        <span data-page-summary>Page 1</span>
+        <button class="button button-quiet" type="button" data-next>Next</button>
+      </nav>
+    </div>
+  </main>
+</body>
+</html>

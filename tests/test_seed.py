@@ -4,7 +4,7 @@ from pathlib import Path
 
 from sqlalchemy import func, select
 
-from hunt_board.db.models import ApplicationStatus, Source, User, UserPreference
+from hunt_board.db.models import ApplicationStatus, SavedSearch, Source, User, UserPreference
 from hunt_board.db.seed import seed_milestone_one
 
 
@@ -21,3 +21,4 @@ def test_seed_is_idempotent(db_session) -> None:
     assert db_session.scalar(select(func.count()).select_from(UserPreference)) == 1
     assert db_session.scalar(select(func.count()).select_from(ApplicationStatus)) == 9
     assert db_session.scalar(select(func.count()).select_from(Source)) == 1
+    assert db_session.scalar(select(func.count()).select_from(SavedSearch)) == 1

@@ -1,6 +1,7 @@
 from __future__ import annotations
 
 import asyncio
+from datetime import datetime, timezone
 from decimal import Decimal
 from pathlib import Path
 
@@ -8,7 +9,7 @@ import pytest
 from sqlalchemy import select
 
 from hunt_board.db.models import DuplicateReview, JobPosting, JobVersion, ScrapeRun, ScrapeSourceRun, Source
-from hunt_board.ingestion.adapters.base import NormalizedJob
+from hunt_board.ingestion.adapters.base import AdapterFetchResult, NormalizedJob
 from hunt_board.ingestion.service import IngestionService
 
 FIXTURE_DIR = Path(__file__).parent / "fixtures"
@@ -26,6 +27,20 @@ class FakeAdapter:
 class FailingAdapter:
     async def fetch_jobs(self, source):
         raise RuntimeError("fixture source unavailable")
+
+
+class PartialAdapter:
+    def __init__(self, jobs: list[NormalizedJob], skipped_count: int = 1) -> None:
+        self.jobs = jobs
+        self.skipped_count = skipped_count
+
+    async def fetch_jobs(self, source):
+        return AdapterFetchResult(
+            jobs=self.jobs,
+            lifecycle_authoritative=False,
+            skipped_count=self.skipped_count,
+            warning_message=f"Skipped {self.skipped_count} incomplete fixture job(s)",
+        )
 
 
 class ConcurrentAdapter:
@@ -106,7 +121,7 @@ async def test_ingestion_writes_metrics_and_marks_closed(db_session) -> None:
     assert stored.source.company_logo_url == "https://example.com/acme-logo.svg"
 
     service = IngestionService(str(SOURCE_FILE), adapter_overrides={"acme": FakeAdapter([_job("1")])})
-    for _ in range(11):
+    for _ in range(2):
         interim = await service.run(db_session, ["acme"])
         assert interim.total_closed == 0
     second = await service.run(db_session, ["acme"])
@@ -114,7 +129,7 @@ async def test_ingestion_writes_metrics_and_marks_closed(db_session) -> None:
     assert second.total_closed == 1
     inactive = db_session.scalar(select(JobPosting).where(JobPosting.external_job_id == "2"))
     assert inactive.active is False
-    assert inactive.consecutive_missed_runs == 12
+    assert inactive.consecutive_missed_runs == 3
 
 
 @pytest.mark.asyncio()
@@ -153,6 +168,27 @@ async def test_repeated_job_is_counted_unchanged_without_an_upsert(db_session) -
 
 
 @pytest.mark.asyncio()
+async def test_posted_at_is_only_populated_from_the_ats(db_session) -> None:
+    without_posted_at = _job()
+    await IngestionService(
+        str(SOURCE_FILE), adapter_overrides={"acme": FakeAdapter([without_posted_at])}
+    ).run(db_session, ["acme"])
+
+    stored = db_session.scalar(select(JobPosting))
+    assert stored.posted_at is None
+
+    official_time = datetime(2026, 7, 1, 12, 30, tzinfo=timezone.utc)
+    with_posted_at = NormalizedJob(
+        **{**without_posted_at.__dict__, "posted_at": official_time}
+    )
+    await IngestionService(
+        str(SOURCE_FILE), adapter_overrides={"acme": FakeAdapter([with_posted_at])}
+    ).run(db_session, ["acme"])
+
+    assert stored.posted_at == official_time
+
+
+@pytest.mark.asyncio()
 async def test_changed_job_is_updated(db_session) -> None:
     service = IngestionService(str(SOURCE_FILE), adapter_overrides={"acme": FakeAdapter([_job()])})
     await service.run(db_session, ["acme"])
@@ -179,6 +215,52 @@ async def test_failed_source_records_health_metadata(db_session) -> None:
     assert source.last_checked_at is not None
     assert source.last_error == "fixture source unavailable"
     assert source.consecutive_failures == 1
+
+
+@pytest.mark.asyncio()
+async def test_partial_source_writes_complete_jobs_without_lifecycle_closure(
+    db_session,
+) -> None:
+    await IngestionService(
+        str(SOURCE_FILE),
+        adapter_overrides={"acme": FakeAdapter([_job("1"), _job("2")])},
+    ).run(db_session, ["acme"])
+
+    summary = await IngestionService(
+        str(SOURCE_FILE),
+        adapter_overrides={
+            "acme": PartialAdapter([_job("1", "Senior Backend Engineer")])
+        },
+    ).run(db_session, ["acme"])
+
+    complete_job = db_session.scalar(
+        select(JobPosting).where(JobPosting.external_job_id == "1")
+    )
+    omitted_job = db_session.scalar(
+        select(JobPosting).where(JobPosting.external_job_id == "2")
+    )
+    source = db_session.scalar(select(Source).where(Source.slug == "acme"))
+    run = db_session.scalar(select(ScrapeRun).order_by(ScrapeRun.id.desc()))
+    source_run = db_session.scalar(
+        select(ScrapeSourceRun).where(ScrapeSourceRun.scrape_run_id == run.id)
+    )
+
+    assert summary.status == "completed_with_errors"
+    assert summary.total_updated_jobs == 1
+    assert summary.total_closed == 0
+    assert summary.total_errors == 1
+    assert summary.source_runs[0].status == "completed_with_errors"
+    assert summary.source_runs[0].skipped_count == 1
+    assert complete_job.title == "Senior Backend Engineer"
+    assert omitted_job.active is True
+    assert omitted_job.consecutive_missed_runs == 0
+    assert source.health_status == "unhealthy"
+    assert source.last_error == "Skipped 1 incomplete fixture job(s)"
+    assert run.status == "completed_with_errors"
+    assert source_run.status == "completed_with_errors"
+    assert source_run.upserted_count == 1
+    assert source_run.closed_count == 0
+    assert source_run.error_count == 1
 
 
 @pytest.mark.asyncio()

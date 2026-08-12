@@ -30,4 +30,4 @@ def test_load_sources_accepts_milestone_shape() -> None:
     assert source.config["board_token"] == "stripe"
     assert source.poll_interval_minutes is None
     assert source.effective_poll_interval_minutes == 360
-    assert source.close_after_missed_runs == 12
+    assert source.close_after_missed_runs == 3

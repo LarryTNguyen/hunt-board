@@ -2,9 +2,11 @@ from __future__ import annotations
 
 from dataclasses import dataclass
 from datetime import datetime, timedelta, timezone
+import logging
+from time import perf_counter
 from typing import Any, Literal
 
-from sqlalchemy import Select, and_, case, func, literal, literal_column, or_, select
+from sqlalchemy import Select, String, and_, case, cast, func, literal, literal_column, not_, or_, select
 from sqlalchemy.orm import Session
 
 from hunt_board.db.models import (
@@ -14,7 +16,12 @@ from hunt_board.db.models import (
     JobPosting,
     SavedJob,
     Source,
+    UserJobState,
 )
+from hunt_board.core.observability import trace_span
+
+
+logger = logging.getLogger("hunt_board")
 
 
 SortBy = Literal[
@@ -51,18 +58,43 @@ class JobQueryFilters:
     application_state: Literal["none", "tracked", "any"] = "any"
     remote_only: bool = False
     posted_within_days: int | None = None
+    job_families: tuple[str, ...] = ()
+    related_job_families: tuple[str, ...] = ()
+    desired_titles: tuple[str, ...] = ()
+    include_keywords: tuple[str, ...] = ()
+    exclude_keywords: tuple[str, ...] = ()
+    countries: tuple[str, ...] = ()
+    excluded_countries: tuple[str, ...] = ()
+    workplace_types: tuple[str, ...] = ()
+    employment_types: tuple[str, ...] = ()
+    experience_levels: tuple[str, ...] = ()
+    sponsorship_required: bool | None = None
+    min_salary: float | None = None
+    excluded_companies: tuple[str, ...] = ()
 
 
 def user_state_statement(user_id: int | None, *columns: Any) -> Select:
     saved_join = and_(SavedJob.job_posting_id == JobPosting.id, SavedJob.user_id == user_id)
     discarded_join = and_(DiscardedJob.job_posting_id == JobPosting.id, DiscardedJob.user_id == user_id)
-    application_join = and_(Application.job_posting_id == JobPosting.id, Application.user_id == user_id)
+    combined_state_join = and_(UserJobState.job_posting_id == JobPosting.id, UserJobState.user_id == user_id)
+    latest_application_id = (
+        select(func.max(Application.id))
+        .where(
+            Application.job_posting_id == JobPosting.id,
+            Application.user_id == user_id,
+            Application.deleted_at.is_(None),
+        )
+        .correlate(JobPosting)
+        .scalar_subquery()
+    )
+    application_join = Application.id == latest_application_id
     return (
         select(*columns)
         .select_from(JobPosting)
         .join(Source, Source.id == JobPosting.source_id)
         .outerjoin(SavedJob, saved_join)
         .outerjoin(DiscardedJob, discarded_join)
+        .outerjoin(UserJobState, combined_state_join)
         .outerjoin(Application, application_join)
         .outerjoin(ApplicationStatus, ApplicationStatus.id == Application.status_id)
     )
@@ -78,6 +110,7 @@ def job_row_statement(user_id: int | None) -> Select:
         DiscardedJob.created_at,
         Application.id,
         ApplicationStatus,
+        UserJobState.seen_at,
     )
 
 
@@ -88,6 +121,7 @@ def apply_job_filters(
     *,
     exclude: frozenset[str] = frozenset(),
 ) -> tuple[Select, Any | None]:
+    started = perf_counter()
     if "active" not in exclude and filters.active is not None:
         statement = statement.where(JobPosting.active.is_(filters.active))
     if "company" not in exclude and filters.company:
@@ -150,7 +184,93 @@ def apply_job_filters(
         )
     if "posted_within_days" not in exclude and filters.posted_within_days is not None:
         cutoff = datetime.now(timezone.utc) - timedelta(days=filters.posted_within_days)
-        statement = statement.where(func.coalesce(JobPosting.posted_at, JobPosting.first_seen_at) >= cutoff)
+        statement = statement.where(JobPosting.posted_at >= cutoff)
+    if "job_families" not in exclude and filters.job_families:
+        statement = statement.where(JobPosting.job_family_slug.in_(filters.job_families))
+    if "desired_titles" not in exclude and filters.desired_titles:
+        statement = statement.where(
+            or_(*(JobPosting.title.ilike(f"%{title.strip()}%") for title in filters.desired_titles))
+        )
+    if "include_keywords" not in exclude and filters.include_keywords:
+        searchable = func.coalesce(JobPosting.title, "") + " " + func.coalesce(JobPosting.description_text, "")
+        statement = statement.where(
+            or_(*(searchable.ilike(f"%{keyword.strip()}%") for keyword in filters.include_keywords))
+        )
+    if filters.exclude_keywords:
+        searchable = func.coalesce(JobPosting.title, "") + " " + func.coalesce(JobPosting.description_text, "")
+        specific_includes = tuple(
+            keyword for keyword in filters.include_keywords if len(keyword.strip().split()) > 1
+        )
+        statement = statement.where(
+            and_(
+                *(
+                    or_(
+                        not_(searchable.ilike(f"%{keyword.strip()}%")),
+                        *(
+                            JobPosting.title.ilike(f"%{include.strip()}%")
+                            for include in specific_includes
+                        ),
+                    )
+                    for keyword in filters.exclude_keywords
+                )
+            )
+        )
+    if filters.excluded_companies:
+        statement = statement.where(
+            and_(*(not_(JobPosting.company_name.ilike(f"%{company.strip()}%")) for company in filters.excluded_companies))
+        )
+    if "countries" not in exclude and filters.countries:
+        locations_text = cast(JobPosting.locations_json, String)
+        country_checks = []
+        for country in filters.countries:
+            normalized = country.strip()
+            country_checks.extend(
+                [
+                    JobPosting.location_country_code == normalized.upper(),
+                    JobPosting.location_country.ilike(f"%{normalized}%"),
+                    locations_text.ilike(f"%{normalized}%"),
+                ]
+            )
+        statement = statement.where(or_(*country_checks))
+    if filters.excluded_countries:
+        locations_text = cast(JobPosting.locations_json, String)
+        for country in filters.excluded_countries:
+            normalized = country.strip()
+            statement = statement.where(
+                not_(
+                    or_(
+                        JobPosting.location_country_code == normalized.upper(),
+                        JobPosting.location_country.ilike(f"%{normalized}%"),
+                        locations_text.ilike(f"%{normalized}%"),
+                    )
+                )
+            )
+    if "workplace_types" not in exclude and filters.workplace_types:
+        statement = statement.where(
+            or_(*(JobPosting.workplace_type.ilike(f"%{value.strip()}%") for value in filters.workplace_types))
+        )
+    if filters.employment_types:
+        statement = statement.where(
+            or_(*(JobPosting.employment_type.ilike(f"%{value.strip()}%") for value in filters.employment_types))
+        )
+    if "experience_levels" not in exclude and filters.experience_levels:
+        level_terms = {
+            "internship": ("intern", "internship"),
+            "co-op": ("co-op", "coop"),
+            "new-grad": ("new grad", "graduate"),
+            "entry-level": ("entry", "junior", "associate"),
+            "experienced": ("senior", "staff", "principal", "lead", "manager", "director"),
+        }
+        terms = tuple(term for level in filters.experience_levels for term in level_terms.get(level, (level,)))
+        statement = statement.where(or_(*(JobPosting.title.ilike(f"%{term}%") for term in terms)))
+    if filters.sponsorship_required is True:
+        statement = statement.where(JobPosting.sponsorship_status == "available")
+    elif filters.sponsorship_required is False:
+        statement = statement.where(JobPosting.sponsorship_status != "required")
+    if "min_salary" not in exclude and filters.min_salary is not None:
+        known_salary = or_(JobPosting.salary_min.is_not(None), JobPosting.salary_max.is_not(None))
+        salary_meets = func.coalesce(JobPosting.salary_max, JobPosting.salary_min) >= filters.min_salary
+        statement = statement.where(or_(not_(known_salary), salary_meets))
 
     relevance = None
     normalized_search = filters.search.strip() if filters.search else ""
@@ -173,10 +293,30 @@ def apply_job_filters(
                 + case((location_match, 2), else_=0)
                 + case((description_match, 1), else_=0)
             )
+    logger.info(
+        "job_query.construction",
+        extra={
+            "event_name": "job_query.construction",
+            "event_data": {
+                "filter_fields": sorted(
+                    field
+                    for field, value in vars(filters).items()
+                    if value not in (None, False, "", (), [])
+                ),
+                "duration_ms": round((perf_counter() - started) * 1000, 3),
+            },
+        },
+    )
     return statement, relevance
 
 
-def apply_job_sort(statement: Select, sort_by: SortBy, sort_order: SortOrder, relevance: Any | None) -> Select:
+def apply_job_sort(
+    statement: Select,
+    sort_by: SortBy,
+    sort_order: SortOrder,
+    relevance: Any | None,
+    filters: JobQueryFilters | None = None,
+) -> Select:
     sort_columns = {
         "ranking_score": JobPosting.ranking_score,
         "first_seen_at": JobPosting.first_seen_at,
@@ -189,16 +329,27 @@ def apply_job_sort(statement: Select, sort_by: SortBy, sort_order: SortOrder, re
         sort_by, JobPosting.ranking_score
     )
     selected_order = selected_sort.asc() if sort_order == "asc" else selected_sort.desc()
+    salary_order = []
+    if filters is not None and filters.min_salary is not None:
+        salary_order = [
+            case(
+                (func.coalesce(JobPosting.salary_max, JobPosting.salary_min) >= filters.min_salary, 0),
+                (JobPosting.salary_min.is_(None) & JobPosting.salary_max.is_(None), 1),
+                else_=2,
+            ).asc()
+        ]
     return statement.order_by(
         JobPosting.active.desc(),
         case((JobPosting.duplicate_status == "duplicate", 1), else_=0).asc(),
+        *salary_order,
         selected_order,
         JobPosting.id.desc(),
     )
 
 
 def count_jobs(db: Session, statement: Select) -> int:
-    return int(db.scalar(select(func.count()).select_from(statement.order_by(None).subquery())) or 0)
+    with trace_span(logger, "job_query.database", operation="count"):
+        return int(db.scalar(select(func.count()).select_from(statement.order_by(None).subquery())) or 0)
 
 
 def feed_facets(db: Session, user_id: int | None, filters: JobQueryFilters) -> dict[str, list[dict]]:
@@ -208,6 +359,8 @@ def feed_facets(db: Session, user_id: int | None, filters: JobQueryFilters) -> d
         "countries": _facet(db, user_id, filters, "country"),
         "workplace_types": _facet(db, user_id, filters, "workplace_type"),
         "salary_known": _facet(db, user_id, filters, "salary_known"),
+        "job_families": _facet(db, user_id, filters, "job_families"),
+        "employment_types": _facet(db, user_id, filters, "employment_types"),
     }
 
 
@@ -221,6 +374,10 @@ def _facet(db: Session, user_id: int | None, filters: JobQueryFilters, key: str)
         facet_label = func.coalesce(JobPosting.location_country, JobPosting.location_country_code)
     elif key == "workplace_type":
         value, facet_label = JobPosting.workplace_type, JobPosting.workplace_type
+    elif key == "job_families":
+        value, facet_label = JobPosting.job_family_slug, JobPosting.job_family_slug
+    elif key == "employment_types":
+        value, facet_label = JobPosting.employment_type, JobPosting.employment_type
     else:
         known = or_(JobPosting.salary_min.is_not(None), JobPosting.salary_max.is_not(None))
         value = case((known, literal("true")), else_=literal("false"))
@@ -232,7 +389,8 @@ def _facet(db: Session, user_id: int | None, filters: JobQueryFilters, key: str)
     if key != "salary_known":
         statement = statement.where(value.is_not(None))
     statement = statement.group_by(value, facet_label).order_by(count_column.desc(), facet_label.asc())
-    rows = db.execute(statement).all()
+    with trace_span(logger, "job_query.database", operation="facet", facet=key):
+        rows = db.execute(statement).all()
     return [
         {
             "value": str(row.facet_value),
@@ -249,4 +407,6 @@ def _display_facet_label(key: str, value: str) -> str:
         return value.replace("_", " ").title()
     if key == "workplace_type":
         return value.replace("_", " ").replace("-", " ").title()
+    if key == "job_families":
+        return value.replace("-", " ").title()
     return value

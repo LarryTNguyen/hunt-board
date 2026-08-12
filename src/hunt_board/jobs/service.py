@@ -1,9 +1,9 @@
 from __future__ import annotations
 
-from sqlalchemy import and_, select
+from sqlalchemy import and_, func, select
 from sqlalchemy.orm import Session
 
-from hunt_board.db.models import Application, ApplicationStatus, DiscardedJob, JobPosting, SavedJob, Source
+from hunt_board.db.models import Application, ApplicationStatus, DiscardedJob, JobPosting, SavedJob, Source, UserJobState
 
 
 def source_summary(source: Source | None) -> dict | None:
@@ -40,6 +40,9 @@ def job_summary(job: JobPosting, source: Source | None = None) -> dict:
         "duplicate_status": job.duplicate_status,
         "duplicate_of_job_id": job.duplicate_of_job_id,
         "reposted_at": job.reposted_at,
+        "job_family_slug": job.job_family_slug,
+        "sponsorship_status": job.sponsorship_status,
+        "remote_scope": job.remote_scope,
     }
 
 
@@ -51,6 +54,7 @@ def job_read_payload(
     discarded_at: datetime | None,
     application_id: int | None,
     application_status: ApplicationStatus | None,
+    seen_at: datetime | None,
 ) -> dict:
     return {
         "id": job.id,
@@ -97,13 +101,33 @@ def job_read_payload(
         "has_application": application_id is not None,
         "application_id": application_id,
         "application_status": application_status,
+        "is_seen": seen_at is not None,
+        "seen_at": seen_at,
+        "job_family_slug": job.job_family_slug,
+        "classification_confidence": job.classification_confidence,
+        "classification_method": job.classification_method,
+        "classification_reason": job.classification_reason,
+        "classification_overridden_at": job.classification_overridden_at,
+        "sponsorship_status": job.sponsorship_status,
+        "remote_scope": job.remote_scope,
     }
 
 
 def get_job_with_user_state(db: Session, job_id: int, user_id: int | None) -> tuple | None:
     saved_join = and_(SavedJob.job_posting_id == JobPosting.id, SavedJob.user_id == user_id)
     discarded_join = and_(DiscardedJob.job_posting_id == JobPosting.id, DiscardedJob.user_id == user_id)
-    application_join = and_(Application.job_posting_id == JobPosting.id, Application.user_id == user_id)
+    combined_state_join = and_(UserJobState.job_posting_id == JobPosting.id, UserJobState.user_id == user_id)
+    latest_application_id = (
+        select(func.max(Application.id))
+        .where(
+            Application.job_posting_id == JobPosting.id,
+            Application.user_id == user_id,
+            Application.deleted_at.is_(None),
+        )
+        .correlate(JobPosting)
+        .scalar_subquery()
+    )
+    application_join = Application.id == latest_application_id
     return db.execute(
         select(
             JobPosting,
@@ -113,10 +137,12 @@ def get_job_with_user_state(db: Session, job_id: int, user_id: int | None) -> tu
             DiscardedJob.created_at,
             Application.id,
             ApplicationStatus,
+            UserJobState.seen_at,
         )
         .join(Source, Source.id == JobPosting.source_id)
         .outerjoin(SavedJob, saved_join)
         .outerjoin(DiscardedJob, discarded_join)
+        .outerjoin(UserJobState, combined_state_join)
         .outerjoin(Application, application_join)
         .outerjoin(ApplicationStatus, ApplicationStatus.id == Application.status_id)
         .where(JobPosting.id == job_id)

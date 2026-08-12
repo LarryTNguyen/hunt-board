@@ -10,11 +10,11 @@ Locale defaults to `en-US`, page size to 20, detail concurrency to 3, request pa
 
 ## Request and completeness contract
 
-Listings use a retry-aware read-only JSON POST to `/wday/cxs/{tenant}/{site}/jobs` with empty search and facets. Pagination is sequential. The adapter requires a stable total, a list of object postings, safe unique `/job/` paths, exact unique-count completion, and progress within the maximum page count. It retries one complete scan after a possible churn inconsistency and never truncates at the safety ceiling.
+Listings use a retry-aware read-only JSON POST to `/wday/cxs/{tenant}/{site}/jobs` with empty search and facets. Pagination is sequential. The adapter treats the first-page total as authoritative and permits Workday's observed `total: 0` sentinel only on later nonempty pages. It otherwise requires a stable total, a list of object postings, safe unique `/job/` paths, exact first-page-count completion, and progress within the maximum page count. It retries one complete scan after a possible churn inconsistency and never truncates at the safety ceiling.
 
 Details use HTTPS GET requests built only from the validated host and paths. A fixed worker pool bounds concurrency and source pacing spaces request starts. Transient errors retry; bounded `Retry-After` is honored for 429 and 503. Non-JSON, malformed JSON, access denial, unsupported endpoints/contracts, unsafe redirects, and exhausted errors produce actionable adapter failures without logging payload bodies.
 
-A detail 404, 410, or explicit `posted: false` triggers one fresh complete listing. A withdrawn path may be omitted only after it disappears. Newly listed paths are fetched. A still-listed unavailable path or further churn fails the entire source.
+A detail 404, 410, or explicit `posted: false` triggers one fresh complete listing. A withdrawn path that disappeared is omitted, and newly listed paths are fetched. Individually identified paths that remain unavailable are skipped in a non-authoritative partial result. Complete jobs may be upserted, but source status is `completed_with_errors` and lifecycle closure is suppressed. Further listing churn or another failure that prevents complete enumeration still fails the entire source.
 
 ## Normalization contract
 

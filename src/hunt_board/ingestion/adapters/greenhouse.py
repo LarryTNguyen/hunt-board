@@ -1,5 +1,6 @@
 from __future__ import annotations
 
+import asyncio
 from typing import TYPE_CHECKING, Any
 
 from hunt_board.ingestion.adapters.base import (
@@ -24,7 +25,25 @@ class GreenhouseAdapter(HttpATSAdapter):
             raise AdapterError(f"Greenhouse source '{source.slug}' requires config.board_token")
         payload = await self.get_json(f"https://boards-api.greenhouse.io/v1/boards/{token}/jobs?content=true")
         jobs = payload.get("jobs", []) if isinstance(payload, dict) else payload
-        return [self.normalize(source, job) for job in jobs]
+
+        # Greenhouse exposes first_published only on the individual-job
+        # endpoint, not the board listing endpoint. Fetch details with a bound
+        # so posted_at reflects the ATS publication timestamp without creating
+        # an unbounded request burst for large boards.
+        semaphore = asyncio.Semaphore(8)
+
+        async def with_publication_time(job: dict[str, Any]) -> dict[str, Any]:
+            if job.get("first_published"):
+                return job
+            async with semaphore:
+                detail = await self.get_json(
+                    f"https://boards-api.greenhouse.io/v1/boards/{token}/jobs/{job['id']}"
+                    "?pay_transparency=true"
+                )
+            return {**job, **detail}
+
+        detailed_jobs = await asyncio.gather(*(with_publication_time(job) for job in jobs))
+        return [self.normalize(source, job) for job in detailed_jobs]
 
     def normalize(self, source: SourceConfig, job: dict[str, Any]) -> NormalizedJob:
         location = job.get("location") or {}
@@ -60,6 +79,6 @@ class GreenhouseAdapter(HttpATSAdapter):
             salary_max=salary_max,
             salary_currency=salary_currency,
             salary_interval=salary_interval,
-            posted_at=parse_datetime(job.get("created_at")),
+            posted_at=parse_datetime(job.get("first_published")),
             updated_at=parse_datetime(job.get("updated_at")),
         )

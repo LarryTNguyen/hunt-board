@@ -1,24 +1,30 @@
-import '../navigation.js?v=20260721-1';
-import { api } from '../api.js?v=20260721-1';
-import { absoluteDate, activateCompanyLogos, companyMark, country, escapeHtml as esc, label, relativeDate, salary } from '../format.js?v=20260721-2';
+import '../navigation.js?v=20260731-1';
+import { api } from '../api.js?v=20260731-1';
+import { absoluteDate, companyMark, escapeHtml as esc, label, relativeDate, safeUrl } from '../format.js?v=20260721-2';
 import { debounce, loading, makeToast, renderEmpty, renderError, setBusy } from '../ui.js?v=20260721-1';
 
 const host = document.querySelector('[data-tracker]');
 const search = document.querySelector('[data-search]');
 const statusFilter = document.querySelector('[data-status]');
 const dateFilter = document.querySelector('[data-date]');
+const deletedToggle = document.querySelector('[data-deleted]');
 const count = document.querySelector('[data-count]');
 const dialog = document.querySelector('[data-dialog]');
 const dialogContent = document.querySelector('[data-dialog-content]');
 let applications = [];
 let statuses = [];
 
-function statusTone(slug) {
-  if (['rejection'].includes(slug)) return 'status-tone-negative';
-  if (['positive-hear-back', 'offer-received'].includes(slug)) return 'status-tone-positive';
-  if (['ghosted', 'withdrawn'].includes(slug)) return 'status-tone-muted';
-  if (['oa-received', 'interview-scheduled'].includes(slug)) return 'status-tone-active';
-  return 'status-tone-neutral';
+function trackedJob(item) {
+  return item.job || { id: null, ...item.manual_job, company_logo_url: null };
+}
+
+function stageTone(item) {
+  const category = item.status?.standard_category;
+  if (['offer'].includes(category)) return 'positive';
+  if (['rejected', 'withdrawn'].includes(category)) return 'negative';
+  if (['interview', 'assessment'].includes(category)) return 'active';
+  if (category === 'archived') return 'muted';
+  return 'neutral';
 }
 
 function filtered() {
@@ -26,38 +32,40 @@ function filtered() {
   const days = Number(dateFilter.value);
   const cutoff = days ? Date.now() - days * 86400000 : 0;
   return applications.filter((item) => {
-    const statusMatch = statusFilter.value === 'all' || (statusFilter.value === 'terminal' ? item.status.is_terminal : item.status.slug === statusFilter.value);
-    return `${item.job.title} ${item.job.company_name}`.toLowerCase().includes(term) && statusMatch && (!cutoff || new Date(item.updated_at).valueOf() >= cutoff);
+    const job = trackedJob(item);
+    const stage = statusFilter.value === 'all' || (statusFilter.value === 'terminal' ? item.status.is_terminal : item.status.slug === statusFilter.value);
+    return `${job.title} ${job.company_name}`.toLowerCase().includes(term) && stage && (!cutoff || new Date(item.updated_at).valueOf() >= cutoff);
   });
 }
 
 function render() {
   const items = filtered();
-  count.textContent = `${items.length} application${items.length === 1 ? '' : 's'}`;
+  count.textContent = `${items.length} ${deletedToggle.checked ? 'recently deleted' : 'active'} application${items.length === 1 ? '' : 's'}`;
   if (!items.length) {
-    const button = Object.assign(document.createElement('button'), { className: 'button button-primary', type: 'button', textContent: 'Add an application' });
-    button.addEventListener('click', openAddDialog);
-    renderEmpty(host, applications.length ? 'No frames match these filters' : 'No applications are in motion', applications.length ? 'Change the stage, date, or search filter.' : 'Start from a Hunt Board job record to add the first frame.', button);
+    renderEmpty(host, deletedToggle.checked ? 'Recently Deleted is empty' : 'No applications are in motion', deletedToggle.checked ? 'Deleted applications remain here for 30 days.' : 'Add a catalog job or create a private manual record.');
     return;
   }
   const roll = document.createElement('div');
-  roll.className = 'film-roll';
+  roll.className = 'film-roll live-film-roll';
   const table = document.createElement('div');
   table.className = 'film-table live-film-table';
-  table.innerHTML = '<div class="film-head"><span>Job / Company</span><span>Location</span><span>Stage</span><span>Date applied</span><span>Updated</span><span>Notes</span><span>Timeline</span></div>';
+  table.innerHTML = '<div class="film-head"><span>Job / Company</span><span>Location</span><span>Stage</span><span>Started</span><span>Updated</span><span>Notes</span></div>';
   items.forEach((item) => {
+    const job = trackedJob(item);
     const row = document.createElement('article');
-    row.className = `film-row live-film-row ${statusTone(item.status.slug)}`;
-    row.innerHTML = `<a class="film-cell film-role film-role-link" href="/app/job-detail.html?v=20260721-1&id=${item.job.id}" aria-label="Open dossier for ${esc(item.job.title)} at ${esc(item.job.company_name)}"><div class="company-lockup">${companyMark(item.job.company_name, item.job.company_logo_url)}<span><strong class="company-name">${esc(item.job.company_name)}</strong><span class="role-title">${esc(item.job.title)}</span><small>Open job dossier ↗</small></span></div></a>
-      <div class="film-cell"><small>Location</small><strong>${esc(item.job.location || 'Not listed')}</strong><span class="film-subvalue">${esc(country(item.job))}</span><span class="film-subvalue">${esc(salary(item.job))}</span></div>
-      <div class="film-cell"><label class="sr-only" for="status-${item.id}">Stage for ${esc(item.job.company_name)}</label><select class="film-edit-control" id="status-${item.id}" data-stage>${statuses.map((status) => `<option value="${esc(status.slug)}"${status.slug === item.status.slug ? ' selected' : ''}>${esc(status.name)}</option>`).join('')}</select></div>
+    row.className = `film-row live-film-row status-tone-${stageTone(item)}`;
+    row.innerHTML = `<button class="film-cell film-role film-role-link" type="button" data-open aria-label="Open ${esc(job.title)} at ${esc(job.company_name)}"><div class="company-lockup">${companyMark(job.company_name, job.company_logo_url)}<span><strong class="company-name">${esc(job.company_name)}</strong><span class="role-title">${esc(job.title)}</span><small>${item.manual_job ? `Private manual job · ${esc(label(job.job_family_slug))}` : 'Shared catalog job'}</small></span></div></button>
+      <div class="film-cell"><small>Location</small><strong>${esc(job.location || 'Not listed')}</strong></div>
+      <div class="film-cell"><select class="film-edit-control" data-stage${item.deleted_at ? ' disabled' : ''}>${statuses.map((status) => `<option value="${esc(status.slug)}"${status.slug === item.status.slug ? ' selected' : ''}>${esc(status.name)}</option>`).join('')}</select><small>Reports as ${esc(label(item.status.standard_category))}</small></div>
       <div class="film-cell"><small>Started</small><strong>${esc(absoluteDate(item.created_at))}</strong></div>
       <div class="film-cell"><small>Last movement</small><strong>${esc(relativeDate(item.updated_at))}</strong></div>
       <div class="film-cell"><small>Field note</small><strong>${esc(item.notes || 'No note yet')}</strong></div>
-      <div class="film-cell"><button class="button button-dark" type="button" data-open>Open frame</button><a class="text-button" href="/app/job-detail.html?v=20260721-1&id=${item.job.id}">Job dossier</a></div>`;
-    row.querySelector('[data-stage]').addEventListener('change', (event) => updateStage(item, event.currentTarget));
-    row.querySelector('[data-open]').addEventListener('click', () => openApplication(item));
-    activateCompanyLogos(row);
+      <button class="tracker-delete-tab" type="button" data-delete-inline aria-label="Move application to Recently Deleted" title="Move to Recently Deleted"><span aria-hidden="true">&#128465;</span></button>`;
+    row.querySelector('[data-stage]')?.addEventListener('change', (event) => updateStage(item, event.currentTarget));
+    row.querySelector('[data-open]')?.addEventListener('click', () => openApplication(item));
+    row.querySelector('[data-delete-inline]')?.addEventListener('click', () => deleteApplication(item));
+    row.querySelector('[data-restore]')?.addEventListener('click', () => restoreApplication(item));
+    row.querySelector('[data-permanent]')?.addEventListener('click', () => permanentlyDelete(item));
     table.append(row);
   });
   roll.append(table);
@@ -65,130 +73,104 @@ function render() {
 }
 
 async function updateStage(item, select) {
-  const old = item.status.slug;
   setBusy(select, true);
-  try {
-    const updated = await api.updateApplication(item.id, { status: select.value, status_note: 'Stage updated from the live tracker' });
-    Object.assign(item, updated);
-    makeToast(`Application moved to ${updated.status.name}.`);
-    render();
-  } catch (error) { select.value = old; makeToast(error.message, 'error'); setBusy(select, false); }
+  try { Object.assign(item, await api.updateApplication(item.id, { status: select.value, status_note: 'Stage updated from the tracker' })); makeToast(`Application moved to ${item.status.name}.`); render(); }
+  catch (error) { makeToast(error.message, 'error'); await load(); }
 }
 
-function showDialog() {
-  if (typeof dialog.showModal === 'function') dialog.showModal(); else dialog.setAttribute('open', '');
+async function deleteApplication(item) {
+  const job = trackedJob(item);
+  if (!confirm(`Move ${job.title} to Recently Deleted for 30 days?`)) return;
+  await api.deleteApplication(item.id);
+  makeToast('Application moved to Recently Deleted.');
+  await load();
 }
 
-function closeDialog() {
-  if (typeof dialog.close === 'function') dialog.close(); else dialog.removeAttribute('open');
-}
+function showDialog() { if (typeof dialog.showModal === 'function') dialog.showModal(); else dialog.setAttribute('open', ''); }
+function closeDialog() { if (typeof dialog.close === 'function') dialog.close(); else dialog.removeAttribute('open'); }
 
 async function openApplication(item) {
-  dialogContent.innerHTML = `<div class="dialog-head"><div><p class="utility-label">Application frame / #${item.id}</p><h2>${esc(item.job.title)}</h2><p>${esc(item.job.company_name)} · ${esc(item.status.name)}</p></div><button class="icon-button" type="button" data-close aria-label="Close application frame">×</button></div><div class="dialog-grid"><section><label class="field-label" for="application-notes">Application notes</label><textarea class="notes-area" id="application-notes">${esc(item.notes || '')}</textarea><div class="action-row"><button class="button button-primary" type="button" data-save-notes>Save notes</button><button class="button button-danger" type="button" data-delete>Remove from tracker</button></div><p class="form-status" data-note-status aria-live="polite"></p><hr><h3>Record a manual event</h3><form data-event-form><label class="field-label" for="event-type">Event type</label><select class="select-field full-field" id="event-type" name="event_type"><option value="note">Note</option><option value="follow_up">Follow up</option><option value="online_assessment">Online assessment</option><option value="interview">Interview</option><option value="recruiter_contact">Recruiter contact</option><option value="rejection">Rejection</option><option value="offer">Offer</option></select><label class="field-label" for="event-notes">Event notes</label><textarea class="text-area" id="event-notes" name="notes" required></textarea><label class="field-label" for="event-date">Occurred at (optional)</label><input class="text-input" id="event-date" name="occurred_at" type="datetime-local"><button class="button button-dark" type="submit">Add event</button><p class="form-status" data-event-status aria-live="polite"></p></form></section><section><p class="section-label">Timeline</p><div data-timeline></div></section></div>`;
+  const job = trackedJob(item);
+  const dossier = item.job ? `/app/job-detail.html?id=${item.job.id}` : null;
+  const posting = safeUrl(item.job?.apply_url || item.manual_job?.posting_url);
+  const links = `${dossier ? `<a class="button button-dark" href="${dossier}">View job dossier</a>` : ''}${posting ? `<a class="button" href="${esc(posting)}" target="_blank" rel="noopener noreferrer">Official posting</a>` : ''}`;
+  dialogContent.innerHTML = `<div class="dialog-head"><div><p class="utility-label">Application frame / #${item.id}</p><h2>${esc(job.title)}</h2><p>${esc(job.company_name)} · ${esc(item.status.name)} · reports as ${esc(label(item.status.standard_category))}</p><div class="action-row dialog-job-links">${links}</div></div><button class="icon-button" type="button" data-close aria-label="Close">×</button></div><div class="dialog-grid"><section><label class="field-label" for="application-notes">Application notes</label><textarea class="notes-area" id="application-notes">${esc(item.notes || '')}</textarea><label class="field-label" for="application-link">Related link</label><input class="text-input" id="application-link" type="url" value="${esc(item.link_url || '')}" placeholder="https://"><div class="action-row"><button class="button button-primary" type="button" data-save>Save notes and link</button><button class="button button-danger" type="button" data-delete>Move to Recently Deleted</button></div><hr><h3>Record an event</h3><form data-event-form><label class="field-label" for="event-type">Event type</label><select class="select-field full-field" id="event-type" name="event_type"><option value="note">Note</option><option value="follow_up">Follow up</option><option value="online_assessment">Online assessment</option><option value="interview">Interview</option><option value="recruiter_contact">Recruiter contact</option><option value="rejection">Rejection</option><option value="offer">Offer</option></select><label class="field-label" for="event-notes">Event notes</label><textarea class="text-area" id="event-notes" name="notes" required></textarea><button class="button button-dark" type="submit">Add event</button></form></section><section><p class="section-label">Timeline</p><div data-timeline></div></section></div>`;
   dialogContent.querySelector('[data-close]').addEventListener('click', closeDialog);
-  dialogContent.querySelector('[data-save-notes]').addEventListener('click', (event) => saveNotes(item, event.currentTarget));
-  dialogContent.querySelector('[data-delete]').addEventListener('click', (event) => removeApplication(item, event.currentTarget));
-  dialogContent.querySelector('[data-event-form]').addEventListener('submit', (event) => addEvent(item, event));
+  dialogContent.querySelector('[data-save]').addEventListener('click', async (event) => {
+    setBusy(event.currentTarget, true);
+    try { Object.assign(item, await api.updateApplication(item.id, { notes: dialogContent.querySelector('#application-notes').value, link_url: dialogContent.querySelector('#application-link').value || null })); makeToast('Application details saved.'); render(); }
+    catch (error) { makeToast(error.message, 'error'); }
+    setBusy(event.currentTarget, false);
+  });
+  dialogContent.querySelector('[data-delete]').addEventListener('click', async () => {
+    if (!confirm(`Move ${job.title} to Recently Deleted for 30 days?`)) return;
+    await api.deleteApplication(item.id); closeDialog(); makeToast('Application moved to Recently Deleted.'); await load();
+  });
+  dialogContent.querySelector('[data-event-form]').addEventListener('submit', async (event) => {
+    event.preventDefault();
+    await api.createEvent(item.id, { event_type: event.currentTarget.elements.event_type.value, notes: event.currentTarget.elements.notes.value });
+    event.currentTarget.reset(); makeToast('Timeline event recorded.'); await renderTimeline(item.id);
+  });
   showDialog();
-  await renderTimeline(item);
+  await renderTimeline(item.id);
 }
 
-async function removeApplication(item, button) {
-  if (!window.confirm(`Remove ${item.job.title} at ${item.job.company_name} from the tracker? Its application notes and timeline will also be removed.`)) return;
-  setBusy(button, true);
+async function renderTimeline(id) {
+  const target = dialogContent.querySelector('[data-timeline]');
+  loading(target, 'Reading the event trail…');
   try {
-    await api.deleteApplication(item.id);
-    applications = applications.filter((application) => application.id !== item.id);
-    closeDialog();
-    render();
-    makeToast('Application removed from the tracker. The job is available in discovery again.');
-  } catch (error) {
-    makeToast(error.message, 'error');
-    setBusy(button, false);
-  }
-}
-
-async function saveNotes(item, button) {
-  const status = dialogContent.querySelector('[data-note-status]');
-  setBusy(button, true);
-  status.textContent = 'Saving notes…';
-  try {
-    const updated = await api.updateApplication(item.id, { notes: dialogContent.querySelector('#application-notes').value });
-    Object.assign(item, updated);
-    status.textContent = 'Notes saved.';
-    makeToast('Application notes updated.');
-    render();
-  } catch (error) { status.textContent = error.message; makeToast(error.message, 'error'); }
-  setBusy(button, false);
-}
-
-async function renderTimeline(item) {
-  const timeline = dialogContent.querySelector('[data-timeline]');
-  loading(timeline, 'Developing the event timeline…');
-  try {
-    const events = await api.events(item.id);
-    if (!events.length) { renderEmpty(timeline, 'No events recorded', 'Add a note, interview, or follow-up to begin the trail.'); return; }
-    timeline.innerHTML = events.slice().reverse().map((event) => `<article class="timeline-event"><span class="timeline-mark" aria-hidden="true"></span><div><p class="utility-label">${esc(label(event.event_type))} / ${esc(absoluteDate(event.occurred_at))}</p><h4>${esc(event.new_status ? `Moved to ${label(event.new_status)}` : label(event.event_type))}</h4><p>${esc(event.notes || 'No additional note')}</p></div></article>`).join('');
-  } catch (error) { renderError(timeline, error, () => renderTimeline(item)); }
-}
-
-async function addEvent(item, event) {
-  event.preventDefault();
-  const form = event.currentTarget;
-  const button = form.querySelector('button[type="submit"]');
-  const status = form.querySelector('[data-event-status]');
-  setBusy(button, true);
-  const occurred = form.elements.occurred_at.value;
-  try {
-    await api.createEvent(item.id, { event_type: form.elements.event_type.value, notes: form.elements.notes.value, ...(occurred ? { occurred_at: new Date(occurred).toISOString() } : {}) });
-    form.reset();
-    status.textContent = 'Event added.';
-    makeToast('Timeline event recorded.');
-    await renderTimeline(item);
-  } catch (error) { status.textContent = error.message; makeToast(error.message, 'error'); }
-  setBusy(button, false);
-}
-
-function openAddDialog() {
-  dialogContent.innerHTML = `<div class="dialog-head"><div><p class="utility-label">New application / Choose a sighting</p><h2>Add an application</h2><p>Search existing Hunt Board job records, then start the tracker.</p></div><button class="icon-button" type="button" data-close aria-label="Close add application dialog">×</button></div><label class="search-field dialog-search"><span class="sr-only">Search job records</span><input type="search" data-job-search placeholder="Search by title or company"></label><div data-job-results class="dialog-results" aria-live="polite"></div>`;
-  dialogContent.querySelector('[data-close]').addEventListener('click', closeDialog);
-  dialogContent.querySelector('[data-job-search]').addEventListener('input', debounce(searchJobs, 300));
-  renderEmpty(dialogContent.querySelector('[data-job-results]'), 'Search the sightings ledger', 'Enter a title or company to choose a job record.');
-  showDialog();
-  dialogContent.querySelector('[data-job-search]').focus();
-}
-
-async function searchJobs(event) {
-  const term = event.target.value.trim();
-  const target = dialogContent.querySelector('[data-job-results]');
-  if (!term) { renderEmpty(target, 'Search the sightings ledger', 'Enter a title or company to choose a job record.'); return; }
-  loading(target, 'Searching job records…');
-  try {
-    const jobs = (await api.jobs({ search: term, active: true, include_duplicates: false, limit: 20 })).filter((job) => !job.has_application);
-    if (!jobs.length) { renderEmpty(target, 'No untracked jobs found', 'Try a broader search, or open discovery to review the route.'); return; }
-    target.innerHTML = jobs.map((job) => `<button class="job-choice" type="button" data-job="${job.id}"><span><strong>${esc(job.title)}</strong><small>${esc(job.company_name)} · ${esc(job.location || 'Location not listed')}</small></span><span class="tag">Add</span></button>`).join('');
-    target.querySelectorAll('[data-job]').forEach((button) => button.addEventListener('click', () => createFromJob(button.dataset.job, button)));
+    const events = await api.events(id);
+    target.innerHTML = events.slice().reverse().map((event) => `<article class="timeline-event"><span class="timeline-mark"></span><div><p class="utility-label">${esc(label(event.event_type))} / ${esc(absoluteDate(event.occurred_at))}</p><h4>${esc(event.new_status ? `Moved to ${label(event.new_status)}` : label(event.event_type))}</h4><p>${esc(event.notes || 'No additional note')}</p></div></article>`).join('') || '<p>No events recorded.</p>';
   } catch (error) { renderError(target, error); }
 }
 
-async function createFromJob(jobId, button) {
-  setBusy(button, true);
-  try { const created = await api.createApplication(jobId); closeDialog(); makeToast('Application added to the tracker.'); await load(); await openApplication(applications.find((item) => item.id === created.id) || created); } catch (error) { makeToast(error.message, 'error'); setBusy(button, false); }
+function openAddDialog() {
+  dialogContent.innerHTML = `<div class="dialog-head"><div><p class="utility-label">New application / Shared catalog</p><h2>Add an application</h2><p>Search the catalog. Adding a second application is always an explicit action from an existing job dossier.</p></div><button class="icon-button" type="button" data-close>×</button></div><label class="search-field dialog-search"><input type="search" data-job-search placeholder="Search by title or company" aria-label="Search jobs"></label><div data-job-results class="dialog-results"></div>`;
+  dialogContent.querySelector('[data-close]').addEventListener('click', closeDialog);
+  dialogContent.querySelector('[data-job-search]').addEventListener('input', debounce(searchJobs, 300));
+  renderEmpty(dialogContent.querySelector('[data-job-results]'), 'Search the catalog', 'Enter a title or company.');
+  showDialog();
 }
 
-async function load() {
-  loading(host, 'Developing the application film roll…');
+async function searchJobs(event) {
+  const target = dialogContent.querySelector('[data-job-results]');
+  const term = event.target.value.trim();
+  if (!term) return;
+  loading(target, 'Searching…');
   try {
-    [applications, statuses] = await Promise.all([api.applications(), api.statuses()]);
+    const jobs = (await api.jobs({ search: term, active: true, limit: 20 })).filter((job) => !job.has_application);
+    target.innerHTML = jobs.map((job) => `<button class="job-choice" type="button" data-job="${job.id}"><span><strong>${esc(job.title)}</strong><small>${esc(job.company_name)} · ${esc(job.location || 'Location not listed')}</small></span><span class="tag">Add</span></button>`).join('');
+    target.querySelectorAll('[data-job]').forEach((button) => button.addEventListener('click', async () => { setBusy(button, true); await api.createApplication(button.dataset.job); closeDialog(); makeToast('Application added.'); await load(); }));
+  } catch (error) { renderError(target, error); }
+}
+
+function openManualDialog() {
+  dialogContent.innerHTML = `<div class="dialog-head"><div><p class="utility-label">Private record</p><h2>Add a manual job</h2><p>This record and its application stay visible only to you.</p></div><button class="icon-button" type="button" data-close>×</button></div><form data-manual-form class="form-grid"><label class="control-field"><span>Company</span><input name="company_name" required maxlength="255"></label><label class="control-field"><span>Title</span><input name="title" required maxlength="500"></label><label class="control-field"><span>Location</span><input name="location" maxlength="500"></label><label class="control-field"><span>Job family</span><select name="job_family_slug">${['software-engineering','data-analytics','product-management','design-user-experience','finance-accounting','consulting-strategy','marketing-communications','sales-business-development','operations-supply-chain','human-resources-recruiting','legal-compliance','research','other'].map((family) => `<option value="${family}">${esc(label(family))}</option>`).join('')}</select></label><label class="control-field"><span>Posting link</span><input name="posting_url" type="url"></label><label class="control-field"><span>Application notes</span><textarea name="application_notes"></textarea></label><button class="button button-primary" type="submit">Create private application</button></form>`;
+  dialogContent.querySelector('[data-close]').addEventListener('click', closeDialog);
+  dialogContent.querySelector('[data-manual-form]').addEventListener('submit', async (event) => {
+    event.preventDefault(); const form = event.currentTarget; const button = form.querySelector('button'); setBusy(button, true);
+    try { await api.createManualJob({ company_name: form.elements.company_name.value, title: form.elements.title.value, location: form.elements.location.value || null, job_family_slug: form.elements.job_family_slug.value, posting_url: form.elements.posting_url.value || null, application_notes: form.elements.application_notes.value || null }); closeDialog(); makeToast('Private manual job and application created.'); await load(); }
+    catch (error) { makeToast(error.message, 'error'); setBusy(button, false); }
+  });
+  showDialog();
+}
+
+async function restoreApplication(item) { await api.restoreApplication(item.id); makeToast('Application restored.'); await load(); }
+async function permanentlyDelete(item) { const job = trackedJob(item); if (!confirm(`Permanently delete ${job.title}? This cannot be undone.`)) return; await api.permanentlyDeleteApplication(item.id); makeToast('Application permanently deleted.'); await load(); }
+
+async function load() {
+  loading(host, deletedToggle.checked ? 'Opening Recently Deleted…' : 'Developing the application film roll…');
+  try {
+    [applications, statuses] = await Promise.all([api.applications({ recently_deleted: deletedToggle.checked }), api.statuses()]);
     statusFilter.replaceChildren(new Option('All stages', 'all'), new Option('Terminal stages', 'terminal'));
-    statuses.forEach((status) => statusFilter.append(new Option(status.name, status.slug)));
+    statuses.forEach((status) => statusFilter.append(new Option(`${status.name} (${label(status.standard_category)})`, status.slug)));
     render();
-    const requested = Number(new URLSearchParams(location.search).get('application'));
-    if (requested) { const item = applications.find((entry) => entry.id === requested); if (item) openApplication(item); }
-  } catch (error) { renderError(host, error, load); count.textContent = 'Applications unavailable'; }
+  } catch (error) { renderError(host, error, load); }
 }
 
 document.querySelector('[data-add]').addEventListener('click', openAddDialog);
+document.querySelector('[data-manual]').addEventListener('click', openManualDialog);
+deletedToggle.addEventListener('change', load);
 search.addEventListener('input', debounce(render, 180));
 statusFilter.addEventListener('change', render);
 dateFilter.addEventListener('change', render);

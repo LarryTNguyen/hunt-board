@@ -1,5 +1,6 @@
 import '../navigation.js?v=20260722-4';
 import { api } from '../api.js?v=20260722-4';
+import { getAuthState } from '../auth.js?v=20260729-1';
 import { absoluteDate, activateCompanyLogos, companyMark, country, escapeHtml as esc, label, plainText, rankingSignals, relativeDate, roleLevel, safeUrl, salary, score, truncate } from '../format.js?v=20260721-2';
 import { debounce, loading, makeToast, renderEmpty, renderError, setBusy } from '../ui.js?v=20260721-1';
 
@@ -13,19 +14,24 @@ const scoreValues = new Set(['60', '70', '80', '90']);
 const results = document.querySelector('[data-results]');
 const drawer = document.querySelector('[data-drawer]');
 const count = document.querySelector('[data-count]');
-const freshness = document.querySelector('[data-freshness]');
 const pagination = document.querySelector('[data-pagination]');
 const pageSummary = document.querySelector('[data-page-summary]');
 const previousButton = document.querySelector('[data-previous]');
 const nextButton = document.querySelector('[data-next]');
+const saveRouteButton = document.querySelector('[data-save-route]');
+const relaxation = document.querySelector('[data-relaxation]');
+const publicNote = document.querySelector('[data-public-note]');
 const controls = {
   q: document.querySelector('[data-search]'),
+  family: document.querySelector('[data-family]'),
   source: document.querySelector('[data-source]'),
   ats: document.querySelector('[data-ats]'),
   country: document.querySelector('[data-country]'),
   location: document.querySelector('[data-location]'),
   workplace: document.querySelector('[data-workplace]'),
   salary: document.querySelector('[data-salary]'),
+  minSalary: document.querySelector('[data-min-salary]'),
+  employment: document.querySelector('[data-employment]'),
   posted: document.querySelector('[data-posted]'),
   score: document.querySelector('[data-score]'),
   sort: document.querySelector('[data-sort]'),
@@ -36,6 +42,9 @@ let feed = null;
 let topThreshold = 90;
 let currentState = readState();
 let loadSequence = 0;
+const auth = await getAuthState();
+const isAnonymous = !auth.session;
+publicNote.hidden = !isAnonymous;
 
 function positiveInteger(value) {
   const parsed = Number.parseInt(value || '', 10);
@@ -53,12 +62,15 @@ function readState() {
   const requestedSort = params.get('sort');
   return {
     q,
+    family: (params.get('family') || '').trim(),
     source: (params.get('source') || '').trim(),
     ats: (params.get('ats') || '').trim().toLowerCase(),
     country: (params.get('country') || '').trim(),
     location: (params.get('location') || '').trim(),
     workplace: (params.get('workplace') || '').trim(),
     salary: salaryValues.has(params.get('salary')) ? params.get('salary') : '',
+    minSalary: nonnegativeInteger(params.get('minSalary')) || '',
+    employment: (params.get('employment') || '').trim(),
     posted: postedValues.has(params.get('posted')) ? params.get('posted') : '',
     score: scoreValues.has(params.get('score')) ? params.get('score') : '',
     sort: sorts.has(requestedSort) ? requestedSort : (q ? 'relevance:desc' : 'ranking_score:desc'),
@@ -76,6 +88,10 @@ function locationSummary(job) {
 
 function allLocations(job) {
   const locations = Array.isArray(job.locations) ? job.locations.filter((item) => item?.display) : [];
+  const remote = String(job.workplace_type || '').toLowerCase() === 'remote'
+    || locations.some((item) => /\bremote\b/i.test(item.display))
+    || /\bremote\b/i.test(String(job.location || ''));
+  if (remote) return 'Remote';
   return locations.length ? locations.map((item) => item.display).join(' / ') : (job.location || 'Not listed');
 }
 
@@ -124,6 +140,12 @@ function feedParams() {
     application_state: 'none',
     discarded: false,
     include_duplicates: false,
+    job_families: currentState.family,
+    employment_types: currentState.employment,
+    min_salary: currentState.minSalary,
+    relax: true,
+    minimum_results: 10,
+    use_preferences: true,
   };
   if (currentState.tab === 'new') params.saved = false;
   if (currentState.tab === 'saved') params.saved = true;
@@ -136,11 +158,58 @@ function feedParams() {
   return params;
 }
 
+function savedRoutePayload() {
+  const params = feedParams();
+  const filters = {
+    q: params.q || null,
+    active: params.active ?? null,
+    source_slug: params.source_slug || null,
+    ats: params.ats || null,
+    country: params.country || null,
+    location: params.location || null,
+    workplace_type: params.workplace_type || null,
+    salary_known: params.salary_known ?? null,
+    posted_within_days: params.posted_within_days ? Number(params.posted_within_days) : null,
+    min_score: params.min_score ? Number(params.min_score) : null,
+    saved: params.saved ?? null,
+    discarded: params.discarded ?? false,
+    application_state: params.application_state,
+    include_duplicates: params.include_duplicates,
+    job_families: params.job_families ? [params.job_families] : [],
+    employment_types: params.employment_types ? [params.employment_types] : [],
+    min_salary: params.min_salary ? Number(params.min_salary) : null,
+  };
+  Object.keys(filters).forEach((key) => { if (filters[key] === null) delete filters[key]; });
+  return { filters, sort_by: params.sort_by, sort_order: params.sort_order };
+}
+
+async function saveCurrentRoute() {
+  const suggested = currentState.q ? `${currentState.q} route` : 'Daily route';
+  const name = window.prompt('Name this saved route', suggested)?.trim();
+  if (!name) return;
+  setBusy(saveRouteButton, true);
+  try {
+    await api.createSavedSearch({ name, ...savedRoutePayload() });
+    makeToast(`Saved “${name}”.`);
+  } catch (error) {
+    makeToast(error.message, 'error');
+  } finally {
+    setBusy(saveRouteButton, false);
+  }
+}
+
 function stateLabel(job) {
+  if (isAnonymous) return 'Public';
   if (job.has_application) return job.application_status?.name || 'Tracked';
   if (job.is_saved) return 'Saved';
   if (job.is_reposted) return 'Reposted';
+  if (job.is_seen) return 'Seen';
   return 'New';
+}
+
+function stateTone(job) {
+  if (job.has_application || job.is_saved) return '';
+  return job.is_seen ? 'status-viewing' : 'status-new';
 }
 
 function renderRows() {
@@ -158,14 +227,15 @@ function renderRows() {
   const body = table.querySelector('tbody');
   jobs.forEach((job) => {
     const row = document.createElement('tr');
+    row.dataset.jobId = job.id;
     row.tabIndex = 0;
     row.classList.toggle('is-selected', currentState.job === job.id);
     row.setAttribute('aria-label', `Open ${job.title} at ${job.company_name}`);
-    row.innerHTML = `<td><span class="status ${job.is_saved ? '' : 'status-new'}">${esc(currentState.tab === 'discarded' ? 'Hidden' : stateLabel(job))}</span></td>
-      <td><span class="ledger-title">${esc(job.title)}</span><span class="ledger-submeta">${esc(job.department || job.employment_type || 'General')}</span></td>
+    row.innerHTML = `<td><span class="status ${stateTone(job)}">${esc(currentState.tab === 'discarded' ? 'Hidden' : stateLabel(job))}</span></td>
+      <td><span class="ledger-title">${esc(job.title)}</span><span class="ledger-submeta">${esc(label(job.job_family_slug))}${job.match_type === 'relaxed' ? ' · Broadened' : ''}</span></td>
       <td><span class="company-lockup company-lockup-compact">${companyMark(job.company_name, job.company_logo_url)}<span>${esc(job.company_name)}</span></span></td><td>${esc(locationSummary(job))}</td>
       <td>${esc(country(job))}</td><td class="salary-cell">${esc(salary(job))}</td>
-      <td><span class="source-tag">${esc(job.source?.ats || job.source_slug)}</span></td><td><span class="match-score">${score(job.ranking_score)}</span></td><td>${esc(relativeDate(job.first_seen_at))}</td>`;
+      <td><span class="source-tag">${esc(job.source?.ats || job.source_slug)}</span></td><td><span class="match-score">${score(job.ranking_score)}</span></td><td>${esc(relativeDate(job.posted_at, 'Not provided'))}</td>`;
     const open = () => openDrawer(job);
     row.addEventListener('click', open);
     row.addEventListener('keydown', (event) => { if (event.key === 'Enter' || event.key === ' ') { event.preventDefault(); open(); } });
@@ -200,6 +270,21 @@ function populateFacets(facets) {
   populateSelect(controls.ats, facets.ats, 'All ATS platforms', currentState.ats);
   populateSelect(controls.country, facets.countries, 'All countries', currentState.country);
   populateSelect(controls.workplace, facets.workplace_types, 'Any arrangement', currentState.workplace);
+  populateSelect(controls.family, facets.job_families || [], 'All job families', currentState.family);
+  populateSelect(controls.employment, facets.employment_types || [], 'Any employment type', currentState.employment);
+}
+
+async function persistSeen(job) {
+  try {
+    const updated = await api.markJobSeen(job.id);
+    job.is_seen = updated.is_seen;
+    job.seen_at = updated.seen_at;
+  } catch (error) {
+    job.is_seen = false;
+    job.seen_at = null;
+    renderRows();
+    makeToast(`Seen status could not be saved: ${error.message}`, 'error');
+  }
 }
 
 async function openDrawer(job, updateHistory = true) {
@@ -216,7 +301,7 @@ async function openDrawer(job, updateHistory = true) {
     <div class="relevance-summary">${relevance.map((signal) => `<div><small>${esc(signal.label)}</small><strong>${esc(signal.value)}</strong></div>`).join('')}</div>
     <dl class="meta-list"><div><dt>Locations</dt><dd>${esc(allLocations(job))}</dd></div><div><dt>Country</dt><dd>${esc(country(job))}</dd></div><div><dt>Compensation</dt><dd>${esc(salary(job))}</dd></div><div><dt>Role level</dt><dd>${esc(roleLevel(job.title))}</dd></div><div><dt>Work arrangement</dt><dd>${esc(label(job.workplace_type, 'Not provided by source'))}</dd></div><div><dt>First seen</dt><dd>${esc(absoluteDate(job.first_seen_at))}</dd></div><div><dt>Source</dt><dd>${esc(job.source?.name || job.source_slug)}</dd></div></dl>
     <section class="drawer-section"><h3>Field excerpt</h3><p>${esc(truncate(plainText(job.description_text) || 'No description text was supplied by the source.', 480))}</p></section>
-    <div class="action-row drawer-actions">${currentState.tab === 'discarded' ? '<button class="button button-primary" type="button" data-restore>Restore to route</button>' : `${job.is_saved ? '<button class="button" type="button" data-unsave>Unsave</button>' : '<button class="button" type="button" data-save>Save</button>'}<button class="button" type="button" data-discard>Hide</button>${job.has_application ? '' : '<button class="button button-dark" type="button" data-track>Add to tracker</button>'}`}${official ? `<a class="button" href="${esc(official)}" target="_blank" rel="noopener noreferrer">Open official posting</a>` : ''}<a class="button button-primary" href="/app/job-detail.html?id=${job.id}">View full dossier</a></div></div>`;
+    <div class="action-row drawer-actions">${isAnonymous ? '<a class="button button-primary" href="/app/sign-in.html?next=%2Fapp%2Fjob-discovery.html">Sign in to save or track</a>' : `${currentState.tab === 'discarded' ? '<button class="button button-primary" type="button" data-restore>Restore to route</button>' : `${job.is_saved ? '<button class="button" type="button" data-unsave>Unsave</button>' : '<button class="button" type="button" data-save>Save</button>'}<button class="button" type="button" data-discard>Hide</button>${job.has_application ? '' : '<button class="button button-dark" type="button" data-track>Add to tracker</button>'}`}`} ${official ? `<a class="button" href="${esc(official)}" target="_blank" rel="noopener noreferrer">Open official posting</a>` : ''}${isAnonymous ? '' : `<a class="button button-primary" href="/app/job-detail.html?id=${job.id}">View full dossier</a>`}</div></div>`;
   drawer.querySelector('[data-close]').addEventListener('click', () => closeDrawer());
   activateCompanyLogos(drawer);
   drawer.querySelector('[data-save]')?.addEventListener('click', (event) => mutate(event.currentTarget, async () => { await api.saveJob(job.id); makeToast('Job saved to the field board.'); await loadFeed(); }));
@@ -224,8 +309,14 @@ async function openDrawer(job, updateHistory = true) {
   drawer.querySelector('[data-discard]')?.addEventListener('click', (event) => mutate(event.currentTarget, async () => { await api.discardJob(job.id); makeToast('Job moved to the discard pile.'); closeDrawer(); await loadFeed(); }));
   drawer.querySelector('[data-restore]')?.addEventListener('click', (event) => mutate(event.currentTarget, async () => { await api.restoreJob(job.id); makeToast('Job restored to the daily route.'); closeDrawer(); await loadFeed(); }));
   drawer.querySelector('[data-track]')?.addEventListener('click', (event) => mutate(event.currentTarget, async () => { await api.createApplication(job.id); makeToast('Application added to the tracker and removed from discovery.'); closeDrawer(); await loadFeed(); }));
+  const shouldMarkSeen = !isAnonymous && !job.is_seen;
+  if (shouldMarkSeen) {
+    job.is_seen = true;
+    job.seen_at = new Date().toISOString();
+  }
   renderRows();
   drawer.querySelector('[data-close]').focus();
+  if (shouldMarkSeen) void persistSeen(job);
 }
 
 async function mutate(button, callback) {
@@ -263,10 +354,22 @@ async function loadFeed() {
   pagination.hidden = true;
   loading(results, currentState.tab === 'discarded' ? 'Opening the discard pile…' : 'Reading this route from the server…');
   try {
-    const payload = await api.discoveryFeed(feedParams());
+    const payload = isAnonymous
+      ? await api.publicJobs({ limit: 50 }).then((items) => ({
+        items,
+        total: items.length,
+        limit: 50,
+        offset: 0,
+        has_more: false,
+        facets: { sources: [], ats: [], countries: [], workplace_types: [], job_families: [], employment_types: [] },
+        relaxed_filters: [],
+      }))
+      : await api.discoveryFeed(feedParams());
     if (sequence !== loadSequence) return;
     feed = payload;
     jobs = payload.items;
+    relaxation.hidden = !payload.relaxed_filters?.length;
+    relaxation.textContent = payload.relaxation_notice || '';
     populateFacets(payload.facets);
     renderRows();
     renderPagination();
@@ -276,23 +379,6 @@ async function loadFeed() {
     results.setAttribute('aria-busy', 'false');
     renderError(results, error, loadFeed);
     count.textContent = 'Sightings unavailable';
-  }
-}
-
-async function loadFreshness() {
-  try {
-    const health = await api.ingestionHealth();
-    if (health.status === 'ok') {
-      freshness.textContent = health.last_successful_at ? `Last successful refresh ${relativeDate(health.last_successful_at)}` : 'No successful refresh has been recorded yet';
-      freshness.dataset.state = 'ok';
-    } else {
-      const attention = health.unhealthy_sources + health.stale_running_runs;
-      freshness.textContent = `${attention || health.due_sources} source${attention === 1 ? '' : 's'} need attention; listings may be incomplete`;
-      freshness.dataset.state = 'degraded';
-    }
-  } catch {
-    freshness.textContent = 'Refresh status unavailable; job browsing is still available';
-    freshness.dataset.state = 'unknown';
   }
 }
 
@@ -313,13 +399,16 @@ document.querySelector('[data-tabs]').addEventListener('click', (event) => {
 
 const updateSearch = debounce(() => updateUrl({ q: controls.q.value.trim() }, { replace: true }), 350);
 const updateLocation = debounce(() => updateUrl({ location: controls.location.value.trim() }, { replace: true }), 350);
+const updateMinimumSalary = debounce(() => updateUrl({ minSalary: controls.minSalary.value }, { replace: true }), 350);
 controls.q.addEventListener('input', updateSearch);
 controls.location.addEventListener('input', updateLocation);
-['source', 'ats', 'country', 'workplace', 'salary', 'posted', 'score', 'sort'].forEach((key) => {
+controls.minSalary.addEventListener('input', updateMinimumSalary);
+['family', 'source', 'ats', 'country', 'workplace', 'salary', 'employment', 'posted', 'score', 'sort'].forEach((key) => {
   controls[key].addEventListener('change', () => updateUrl({ [key]: controls[key].value }));
 });
 previousButton.addEventListener('click', () => updateUrl({ offset: Math.max(0, currentState.offset - LIMIT) }, { resetOffset: false }));
 nextButton.addEventListener('click', () => updateUrl({ offset: currentState.offset + LIMIT }, { resetOffset: false }));
+saveRouteButton.addEventListener('click', saveCurrentRoute);
 document.addEventListener('keydown', (event) => { if (event.key === 'Escape' && currentState.job) closeDrawer(); });
 window.addEventListener('popstate', () => {
   const previousSignature = feedSignature(currentState);
@@ -336,5 +425,4 @@ try {
 } catch {
   topThreshold = 90;
 }
-loadFreshness();
 loadFeed();

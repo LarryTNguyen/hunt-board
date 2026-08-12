@@ -1,0 +1,34 @@
+services:
+  - type: web
+    name: hunt-board-production
+    runtime: docker
+    dockerfilePath: ./Dockerfile
+    healthCheckPath: /health/ready
+    autoDeploy: false
+    envVars:
+      - key: HUNT_BOARD_ENVIRONMENT
+        value: production
+      - key: HUNT_BOARD_PROCESS
+        value: web
+      - key: HUNT_BOARD_SOURCES_PATH
+        value: data/sources.yaml
+      - key: HUNT_BOARD_RELEASE
+        sync: false
+      - key: HUNT_BOARD_DEPLOYMENT_ID
+        sync: false
+      - key: HUNT_BOARD_PUBLIC_URL
+        sync: false
+      - key: DATABASE_URL
+        sync: false
+      - key: SUPABASE_URL
+        sync: false
+      - key: SUPABASE_ANON_KEY
+        sync: false
+      - key: SUPABASE_JWT_AUDIENCE
+        value: authenticated
+      - key: HUNT_BOARD_HTTP_TIMEOUT_SECONDS
+        value: "30"
+      - key: HUNT_BOARD_HTTP_MAX_RETRIES
+        value: "2"
+      - key: HUNT_BOARD_RUN_TIMEOUT_SECONDS
+        value: "3600"
