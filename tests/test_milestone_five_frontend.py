@@ -38,7 +38,8 @@ def test_application_tracker_colors_rows_by_stage(client) -> None:
 
     assert "function stageTone(item)" in script
     assert "status-tone-${stageTone(item)}" in script
-    assert "['interview', 'offer'].includes(category)" in script
+    assert "['offer'].includes(category)" in script
+    assert "['interview', 'assessment'].includes(category)" in script
     assert "['rejected', 'withdrawn'].includes(category)" in script
 
 

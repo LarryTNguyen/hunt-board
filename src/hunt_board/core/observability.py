@@ -46,8 +46,14 @@ SENSITIVE_KEYS = {
     "description_text",
 }
 SAFE_ID = re.compile(r"^[A-Za-z0-9._:-]{1,64}$")
+EMAIL_VALUE = re.compile(r"(?i)\b[A-Z0-9._%+-]+@[A-Z0-9.-]+\.[A-Z]{2,}\b")
+BEARER_VALUE = re.compile(r"(?i)\bBearer\s+[A-Za-z0-9._~+/=-]+")
+SECRET_QUERY_VALUE = re.compile(
+    r"(?i)([?&](?:token|key|secret|signature|code)=)[^&#\s]+"
+)
 request_id_context: ContextVar[str | None] = ContextVar("hunt_board_request_id", default=None)
 trace_id_context: ContextVar[str | None] = ContextVar("hunt_board_trace_id", default=None)
+_log_context = {"environment": "development", "release": "development", "process": "web"}
 
 
 def sanitized(value: Any, *, key: str | None = None) -> Any:
@@ -57,8 +63,12 @@ def sanitized(value: Any, *, key: str | None = None) -> Any:
         return {str(k): sanitized(v, key=str(k)) for k, v in value.items()}
     if isinstance(value, (list, tuple)):
         return [sanitized(item) for item in value]
-    if isinstance(value, str) and len(value) > 500:
-        return value[:500]
+    if isinstance(value, str):
+        value = EMAIL_VALUE.sub("[REDACTED_EMAIL]", value)
+        value = BEARER_VALUE.sub("Bearer [REDACTED]", value)
+        value = SECRET_QUERY_VALUE.sub(r"\1[REDACTED]", value)
+        if len(value) > 500:
+            return value[:500]
     return value
 
 
@@ -67,8 +77,10 @@ class StructuredFormatter(logging.Formatter):
         event = {
             "timestamp": datetime.now(timezone.utc).isoformat(),
             "level": record.levelname.lower(),
+            "severity": record.levelname.lower(),
             "service": "hunt-board",
             "event_name": getattr(record, "event_name", record.getMessage()),
+            **_log_context,
         }
         event.update(sanitized(getattr(record, "event_data", {})))
         if "request_id" not in event and request_id_context.get() is not None:
@@ -78,7 +90,12 @@ class StructuredFormatter(logging.Formatter):
         return json.dumps(event, separators=(",", ":"), default=str)
 
 
-def configure_logging() -> None:
+def configure_logging(
+    *, environment: str = "development", release: str = "development", process_name: str = "web"
+) -> None:
+    _log_context.update(
+        {"environment": environment, "release": release, "process": process_name}
+    )
     logger = logging.getLogger("hunt_board")
     if any(getattr(handler, "_hunt_board_structured", False) for handler in logger.handlers):
         return
@@ -111,6 +128,7 @@ class MetricsRegistry:
         self.classifications: Counter[tuple[str, str, str]] = Counter()
         self.query_duration: defaultdict[str, float] = defaultdict(float)
         self.query_results: Counter[str] = Counter()
+        self.scan_events: Counter[tuple[str, str]] = Counter()
 
     def observe_request(self, method: str, route: str, status_code: int, duration: float) -> None:
         status_class = f"{status_code // 100}xx"
@@ -153,6 +171,12 @@ class MetricsRegistry:
     def observe_classification(self, family: str, method: str, confidence_bucket: str) -> None:
         with self._lock:
             self.classifications[(family, method, confidence_bucket)] += 1
+
+    def observe_scan_event(self, category: str, status: str) -> None:
+        bounded_category = category if category in {"run", "source", "queue", "lock", "retry", "timeout", "quarantine", "cancel"} else "other"
+        bounded_status = status[:40].casefold().replace(" ", "_")
+        with self._lock:
+            self.scan_events[(bounded_category, bounded_status)] += 1
 
     def render(
         self,
@@ -211,6 +235,10 @@ class MetricsRegistry:
                 lines.append(f'hunt_board_query_duration_seconds_total{{kind="{kind}"}} {duration:.6f}')
             for bucket, count in sorted(self.query_results.items()):
                 lines.append(f'hunt_board_query_results_total{{bucket="{bucket}"}} {count}')
+            for (category, status), count in sorted(self.scan_events.items()):
+                lines.append(
+                    f'hunt_board_scan_events_total{{category="{category}",status="{status}"}} {count}'
+                )
         lines.extend(
             [
                 f'hunt_board_profiles{{status="active"}} {active_profiles}',

@@ -5,6 +5,7 @@ import asyncio
 import json
 import sys
 from dataclasses import asdict
+from datetime import datetime, timedelta, timezone
 
 from hunt_board.core.config import get_settings
 from hunt_board.db.seed import seed_milestone_one
@@ -13,6 +14,7 @@ from hunt_board.ingestion.registry import sync_sources_from_yaml
 from hunt_board.ingestion.service import IngestionService
 from hunt_board.ingestion.retention import purge_expired_raw_payloads
 from hunt_board.ingestion.scheduler import run_scheduler
+from hunt_board.ingestion.sources import load_sources
 from hunt_board.jobs.classification_service import coverage_report, reclassify_jobs
 
 
@@ -24,6 +26,8 @@ def build_parser() -> argparse.ArgumentParser:
     ingest = commands.add_parser("ingest", help="Run ATS ingestion")
     ingest.add_argument("--source", action="append", dest="sources")
     ingest.add_argument("--dry-run", action="store_true")
+    backfill = commands.add_parser("backfill", help="Run a bounded initial catalog backfill")
+    backfill.add_argument("--days", type=int, default=14, choices=range(1, 91), metavar="1-90")
     commands.add_parser("scheduler", help="Run due-source ingestion on a separate process interval")
     purge = commands.add_parser("purge-expired-raw", help="Purge expired ATS raw payloads")
     purge.add_argument("--dry-run", action="store_true")
@@ -33,7 +37,13 @@ def build_parser() -> argparse.ArgumentParser:
     return parser
 
 
-async def _ingest(sources: list[str] | None, dry_run: bool) -> dict:
+async def _ingest(
+    sources: list[str] | None,
+    dry_run: bool,
+    *,
+    triggered_by: str = "cli",
+    backfill_days: int | None = None,
+) -> dict:
     settings = get_settings()
     with SessionLocal() as db:
         service = IngestionService(
@@ -43,8 +53,20 @@ async def _ingest(sources: list[str] | None, dry_run: bool) -> dict:
             settings.http_max_retries,
             settings.http_retry_backoff_seconds,
             stale_run_minutes=settings.stale_run_minutes,
+            retry_jitter_seconds=settings.http_retry_jitter_seconds,
+            run_timeout_seconds=settings.run_timeout_seconds,
+            anomaly_zero_quarantine=settings.anomaly_zero_quarantine,
+            anomaly_volume_change_ratio=settings.anomaly_volume_change_ratio,
+            anomaly_mass_change_ratio=settings.anomaly_mass_change_ratio,
+            max_job_age_days=settings.max_job_age_days,
+            queue_on_contention=True,
+            minimum_posted_at=(
+                datetime.now(timezone.utc) - timedelta(days=backfill_days)
+                if backfill_days is not None
+                else None
+            ),
         )
-        return asdict(await service.run(db, sources, dry_run, triggered_by="cli"))
+        return asdict(await service.run(db, sources, dry_run, triggered_by=triggered_by))
 
 
 def main() -> None:
@@ -53,6 +75,16 @@ def main() -> None:
     try:
         if args.command == "ingest":
             result = asyncio.run(_ingest(args.sources, args.dry_run))
+        elif args.command == "backfill":
+            source_slugs = [source.slug for source in load_sources(settings.sources_path) if source.enabled]
+            result = asyncio.run(
+                _ingest(
+                    source_slugs,
+                    False,
+                    triggered_by="initial_backfill",
+                    backfill_days=args.days,
+                )
+            )
         elif args.command == "scheduler":
             result = asyncio.run(run_scheduler(settings))
         else:

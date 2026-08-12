@@ -19,7 +19,7 @@ class SourceConfig(BaseModel):
     enabled: bool = True
     priority: int = 0
     poll_interval_minutes: int | None = Field(default=None, ge=1, le=10_080)
-    close_after_missed_runs: int = Field(default=12, ge=1, le=365)
+    close_after_missed_runs: int = Field(default=3, ge=1, le=365)
     categories: list[str] = Field(default_factory=list)
     notes: str = ""
     config: dict[str, Any] = Field(default_factory=dict)

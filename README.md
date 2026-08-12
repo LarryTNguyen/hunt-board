@@ -1,6 +1,6 @@
 # Hunt Board
 
-Hunt Board is a backend-first job intelligence and personal job-search CRM. It ingests curated Greenhouse, Lever, Ashby, and explicitly configured public Workday boards. Milestone 6.1 adds a fixed 13-family taxonomy, deterministic cross-industry classification, optional onboarding, generalized routes, transparent relaxation, private manual jobs, standard reporting stages, and 30-day Recently Deleted while preserving Supabase Auth, PostgreSQL RLS, and the safety-bounded Workday contract.
+Hunt Board is a backend-first job intelligence and personal job-search CRM. It ingests curated Greenhouse, Lever, Ashby, and explicitly configured public Workday boards. Milestone 6.2 adds production-safe environment validation, serialized two-hour scans with one pending slot, anomaly quarantine, auditable lifecycle closure/reactivation, correlated operations telemetry, and provider-neutral deployment/runbooks while preserving Supabase Auth, PostgreSQL RLS, and the safety-bounded Workday contract.
 
 ## Quick start with Docker
 
@@ -79,17 +79,23 @@ Seed creates one idempotent default route named `Daily Hunt` using the user's mi
 - `DATABASE_URL`: SQLAlchemy PostgreSQL URL. The host default uses port `55432`.
 - `HUNT_BOARD_SOURCES_PATH`: YAML source registry path; defaults to `data/sources.yaml`.
 - `HUNT_BOARD_DEFAULT_USER_EMAIL`: deterministic local development admin profile email.
-- `HUNT_BOARD_ENVIRONMENT`: `development` by default; production disables automatic admin creation.
+- `HUNT_BOARD_ENVIRONMENT`: `development` by default; staging/production validate safe settings and production disables automatic admin creation.
+- `HUNT_BOARD_RELEASE`, `HUNT_BOARD_DEPLOYMENT_ID`, `HUNT_BOARD_PROCESS`, `HUNT_BOARD_PUBLIC_URL`: safe deployment identity shown in operations/logs.
 - `SUPABASE_URL`: public Supabase project URL used for JWKS and browser auth bootstrap.
 - `SUPABASE_ANON_KEY`: public anonymous client key; never substitute a service-role key.
 - `SUPABASE_JWT_AUDIENCE`: access-token audience; defaults to `authenticated`.
 - `SUPABASE_JWT_ISSUER`: optional issuer override; defaults to `SUPABASE_URL/auth/v1`.
-- `HUNT_BOARD_HTTP_TIMEOUT_SECONDS`: per-request ATS timeout; defaults to `10`.
+- `HUNT_BOARD_HTTP_TIMEOUT_SECONDS`: per-request ATS timeout; defaults to `30`.
 - `HUNT_BOARD_SOURCE_CONCURRENCY`: maximum ATS sources fetched at once; defaults to `5`.
 - `HUNT_BOARD_HTTP_MAX_RETRIES`: retries for timeouts, network failures, HTTP 408/429, and HTTP 5xx responses; defaults to `2`.
 - `HUNT_BOARD_HTTP_RETRY_BACKOFF_SECONDS`: base exponential retry delay; defaults to `0.5`.
+- `HUNT_BOARD_HTTP_RETRY_JITTER_SECONDS`: maximum random retry jitter; defaults to `0.25`.
+- `HUNT_BOARD_RUN_TIMEOUT_SECONDS`: whole-run deadline; defaults to `3600`.
+- `HUNT_BOARD_STALE_RUN_MINUTES`: stale active-run recovery threshold; defaults to `120`.
+- `HUNT_BOARD_ANOMALY_ZERO_QUARANTINE`, `HUNT_BOARD_ANOMALY_VOLUME_CHANGE_RATIO`, `HUNT_BOARD_ANOMALY_MASS_CHANGE_RATIO`: pre-reconciliation destructive-change safeguards.
+- `HUNT_BOARD_MAX_JOB_AGE_DAYS`: maximum active catalog age; defaults to `365`.
 - `HUNT_BOARD_SCHEDULER_ENABLED`: enables the separate scheduler command; defaults to `true`.
-- `HUNT_BOARD_SCHEDULER_INTERVAL_SECONDS`: seconds between scheduler ticks; defaults to `300`, minimum `10`.
+- `HUNT_BOARD_SCHEDULER_INTERVAL_SECONDS`: seconds between scheduler ticks; defaults to `7200`, minimum `10`.
 - `HUNT_BOARD_SCHEDULER_RUN_ON_STARTUP`: run one due-source tick immediately; defaults to `true`.
 
 The source registry supports the milestone shape (`company_name`, `company_logo_url`, `careers_url`, `ats_type`, `ats_slug`, high/medium/low `priority`, `enabled`, `categories`, and `notes`) and the existing explicit `config` shape. `company_logo_url` is the authoritative logo; the frontend falls back to company initials if it is absent or fails to load. ATS slugs are always manually configured; no scraping-based ATS detection is performed.
@@ -274,4 +280,4 @@ $env:HUNT_BOARD_TEST_POSTGRES_URL='postgresql+psycopg://hunt_board:hunt_board@lo
 uv run pytest -m postgres tests/test_milestone_four_postgres.py
 ```
 
-See [architecture](docs/architecture.md), [Milestone 2 workflows](docs/milestone-2.md), [Milestone 3 frontend](docs/milestone-3.md), [Milestone 3.5](docs/milestone-3.5.md), [Milestone 4](docs/milestone-4.md), [Milestone 4.1](docs/milestone-4.1.md), [Milestone 5](docs/milestone-5.md), [Milestone 6](docs/milestone-6.0.md), [authentication setup](docs/auth-setup.md), and [ingestion pipeline](docs/ingestion-pipeline.md) for design details.
+See [architecture](docs/architecture.md), [Milestone 6.2](docs/milestone-6.2.md), [deployment](docs/deployment.md), [owner operations checklist](docs/owner-ui-checklist-6.2.md), [authentication setup](docs/auth-setup.md), and [ingestion pipeline](docs/ingestion-pipeline.md) for design and operating details.

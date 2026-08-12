@@ -4,8 +4,8 @@
   <meta charset="utf-8">
   <meta name="viewport" content="width=device-width,initial-scale=1">
   <title>Operations — Hunt Board</title>
-  <link rel="stylesheet" href="/app/assets/app.css?v=20260722-4">
-  <script type="module" src="/app/assets/pages/operations.js?v=20260722-4"></script>
+  <link rel="stylesheet" href="/app/assets/app.css?v=20260804-1">
+  <script type="module" src="/app/assets/pages/operations.js?v=20260804-1"></script>
 </head>
 <body>
   <div data-app-nav="operations"></div>
@@ -19,6 +19,7 @@
       </div>
     </div>
     <div class="page-shell operations-shell">
+      <section class="deployment-ribbon" data-deployment aria-live="polite" aria-label="Deployment identity"></section>
       <section class="invitation-console" aria-labelledby="invitation-title">
         <div>
           <p class="utility-label">Beta access ledger</p>
@@ -39,8 +40,29 @@
 
       <section class="operations-actions" aria-labelledby="global-actions-title">
         <div><p class="utility-label">Global actions</p><h2 id="global-actions-title">Run control</h2><p>Due-source actions respect source cadence and the global ingestion lock.</p></div>
-        <div class="action-row"><button class="button" type="button" data-run-dry data-operation-action>Dry run due sources</button><button class="button button-primary" type="button" data-run-real data-operation-action>Run due sources</button><button class="button button-dark" type="button" data-sync data-operation-action>Sync YAML sources</button></div>
+        <div class="action-row"><button class="button" type="button" data-run-dry data-operation-action>Dry run due sources</button><button class="button button-primary" type="button" data-run-real data-operation-action>Run due sources</button><button class="button button-dark" type="button" data-sync data-operation-action>Sync YAML sources</button><button class="button button-quiet" type="button" data-recover data-operation-action>Recover stale run</button></div>
         <p class="operation-message" data-operation-message role="status" aria-live="polite"></p>
+      </section>
+
+      <section class="queue-console" aria-labelledby="queue-title">
+        <div><p class="utility-label">Serialized scan lane</p><h2 id="queue-title">Active → pending → coalesced</h2><p>One scan can run and one can wait. Further requests join the pending scan.</p></div>
+        <div class="queue-rail" data-queue-state aria-live="polite"></div>
+      </section>
+
+      <section aria-labelledby="metrics-title">
+        <div class="section-heading"><div><p class="utility-label">Last 24 hours</p><h2 id="metrics-title">Operational signals</h2></div></div>
+        <div class="operations-status-grid" data-operations-metrics aria-live="polite"></div>
+      </section>
+
+      <section aria-labelledby="quarantine-title">
+        <div class="section-heading"><div><p class="utility-label">Destructive-change brake</p><h2 id="quarantine-title">Quarantine review</h2></div><span class="results-note" data-quarantine-count></span></div>
+        <div class="quarantine-list" data-quarantine-list aria-live="polite"></div>
+      </section>
+
+      <section class="correlation-console" aria-labelledby="correlation-title">
+        <div><p class="utility-label">Request → run → trace</p><h2 id="correlation-title">Find operational evidence</h2><p>Enter a displayed request or trace ID. Results contain metadata only.</p></div>
+        <form data-correlation-form><label class="control-field"><span>Request or trace ID</span><input name="identifier" maxlength="64" required></label><button class="button" type="submit">Find evidence</button></form>
+        <div data-correlation-results aria-live="polite"></div>
       </section>
 
       <section aria-labelledby="source-board-title">

@@ -1,0 +1,30 @@
+name: Production ingestion
+
+on:
+  schedule:
+    - cron: "17 */2 * * *"
+  workflow_dispatch:
+
+concurrency:
+  group: hunt-board-production-ingestion
+  cancel-in-progress: false
+
+jobs:
+  ingest:
+    runs-on: ubuntu-latest
+    timeout-minutes: 70
+    environment: production
+    env:
+      DATABASE_URL: ${{ secrets.HUNT_BOARD_PRODUCTION_DATABASE_URL }}
+      SUPABASE_URL: ${{ secrets.HUNT_BOARD_PRODUCTION_SUPABASE_URL }}
+      SUPABASE_ANON_KEY: ${{ secrets.HUNT_BOARD_PRODUCTION_SUPABASE_ANON_KEY }}
+      HUNT_BOARD_ENVIRONMENT: production
+      HUNT_BOARD_RELEASE: ${{ github.sha }}
+      HUNT_BOARD_DEPLOYMENT_ID: github-actions-${{ github.run_id }}
+      HUNT_BOARD_PROCESS: cron
+      HUNT_BOARD_SOURCES_PATH: data/sources.yaml
+    steps:
+      - uses: actions/checkout@v4
+      - uses: astral-sh/setup-uv@v6
+      - run: uv sync --frozen --no-dev
+      - run: uv run hunt-board ingest

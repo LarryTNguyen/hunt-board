@@ -1,0 +1,16 @@
+# Reduced staging registry. Staging has its own database/auth users and fetches
+# public source data independently; production rows are never copied here.
+sources:
+  - slug: discord-staging
+    name: Discord (staging sample)
+    ats: greenhouse
+    company_name: Discord
+    careers_url: https://discord.com/careers
+    enabled: true
+    priority: 1
+    poll_interval_minutes: 720
+    close_after_missed_runs: 3
+    categories: [staging-sample]
+    notes: Reduced staging coverage only
+    config:
+      board_token: discord

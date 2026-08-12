@@ -29,6 +29,13 @@ async def run_ingestion(payload: IngestRunRequest, db: Session = Depends(get_db)
         settings.http_max_retries,
         settings.http_retry_backoff_seconds,
         stale_run_minutes=settings.stale_run_minutes,
+        retry_jitter_seconds=settings.http_retry_jitter_seconds,
+        run_timeout_seconds=settings.run_timeout_seconds,
+        anomaly_zero_quarantine=settings.anomaly_zero_quarantine,
+        anomaly_volume_change_ratio=settings.anomaly_volume_change_ratio,
+        anomaly_mass_change_ratio=settings.anomaly_mass_change_ratio,
+        max_job_age_days=settings.max_job_age_days,
+        queue_on_contention=True,
     )
     try:
         summary = await service.run(db, payload.source_slugs, payload.dry_run)

@@ -545,11 +545,16 @@ class SourceRunSummaryRead(BaseModel):
     upserted_count: int
     new_jobs: int
     updated_jobs: int
+    reactivated_jobs: int = 0
     unchanged_jobs: int
     closed_count: int
     duplicates_found: int
     skipped_count: int
     error_count: int
+    retry_count: int = 0
+    timeout_count: int = 0
+    parser_failure_count: int = 0
+    quarantine_status: str | None = None
     error_message: str | None
     duration_ms: int
 
@@ -562,6 +567,7 @@ class IngestRunResponse(BaseModel):
     total_upserted: int
     total_new_jobs: int
     total_updated_jobs: int
+    total_reactivated_jobs: int = 0
     total_unchanged_jobs: int
     total_closed: int
     total_duplicates: int
@@ -578,6 +584,13 @@ class ScrapeRunRead(BaseModel):
     status: str
     dry_run: bool
     triggered_by: str
+    request_id: str | None = None
+    trace_id: str | None = None
+    environment: str = "development"
+    release: str = "development"
+    coalesced_triggers: int = 0
+    cancel_requested_at: datetime | None = None
+    cancelled_at: datetime | None = None
     sources_requested: list[str]
     total_sources_checked: int
     total_jobs_seen: int
@@ -606,6 +619,7 @@ class ScrapeSourceRunRead(BaseModel):
     jobs_seen: int
     new_jobs: int
     updated_jobs: int
+    reactivated_jobs: int = 0
     unchanged_jobs: int
     closed_jobs: int
     duplicates_found: int
@@ -613,6 +627,11 @@ class ScrapeSourceRunRead(BaseModel):
     upserted_count: int
     closed_count: int
     error_count: int
+    retry_count: int = 0
+    timeout_count: int = 0
+    parser_failure_count: int = 0
+    quarantine_status: str | None = None
+    trace_id: str | None = None
     error_message: str | None
     started_at: datetime
     finished_at: datetime | None
@@ -641,6 +660,8 @@ class SourceRead(BaseModel):
     last_successful_at: datetime | None
     last_error: str | None
     next_due_at: datetime | None
+    last_successful_job_count: int | None = None
+    quarantine_count: int = 0
 
 
 class SourceSyncRead(BaseModel):
@@ -651,6 +672,9 @@ class SourceSyncRead(BaseModel):
 
 class OperationsIngestionRead(BaseModel):
     run_in_progress: bool
+    active_run_id: int | None = None
+    pending_run_id: int | None = None
+    pending_coalesced_triggers: int = 0
     last_run: ScrapeRunRead | None
     last_successful_at: datetime | None
     next_due_at: datetime | None
@@ -678,6 +702,30 @@ class OperationsRead(BaseModel):
     sources: OperationsSourcesRead
     jobs: OperationsJobsRead
     recent_runs: list[ScrapeRunRead]
+    deployment: dict[str, str]
+    metrics: dict[str, int | float | str | None]
+
+
+class QuarantineRead(BaseModel):
+    model_config = ConfigDict(from_attributes=True)
+
+    id: int
+    scrape_run_id: int
+    scrape_source_run_id: int
+    source_id: int
+    source_slug: str
+    status: str
+    reason: str
+    diff_summary: dict
+    decided_at: datetime | None
+    decided_by_user_id: int | None
+    decision_note: str | None
+    created_at: datetime
+
+
+class QuarantineDecision(BaseModel):
+    model_config = ConfigDict(extra="forbid")
+    note: str | None = Field(default=None, max_length=500)
 
 
 class IngestionHealthLastRunRead(BaseModel):

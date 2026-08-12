@@ -19,8 +19,15 @@ from hunt_board.api.ingest import router as ingest_router
 from hunt_board.api.jobs import public_router, router as jobs_router
 from hunt_board.api.preferences import router as preferences_router
 from hunt_board.db.session import get_db
-from hunt_board.db.models import JobPosting, SavedSearch, ScrapeRun, Source
-from hunt_board.core.config import get_settings
+from hunt_board.db.models import (
+    IngestionQuarantine,
+    JobLifecycleEvent,
+    JobPosting,
+    SavedSearch,
+    ScrapeRun,
+    Source,
+)
+from hunt_board.core.config import get_settings, validate_runtime_settings
 from hunt_board.core.observability import (
     configure_logging,
     metrics,
@@ -37,9 +44,15 @@ from hunt_board.auth.api import router as auth_router
 
 
 def create_app() -> FastAPI:
-    configure_logging()
+    settings = get_settings()
+    validate_runtime_settings(settings)
+    configure_logging(
+        environment=settings.environment,
+        release=settings.release,
+        process_name=settings.process_name,
+    )
     logger = logging.getLogger("hunt_board")
-    app = FastAPI(title="Hunt Board", version="0.6.1")
+    app = FastAPI(title="Hunt Board", version="0.6.2")
 
     @app.exception_handler(SQLAlchemyError)
     async def database_error_handler(request: Request, _exc: SQLAlchemyError) -> JSONResponse:
@@ -128,6 +141,8 @@ def create_app() -> FastAPI:
             db.execute(select(JobPosting.id).limit(1))
             db.execute(select(Source.id).limit(1))
             db.execute(select(ScrapeRun.id).limit(1))
+            db.execute(select(IngestionQuarantine.id).limit(1))
+            db.execute(select(JobLifecycleEvent.id).limit(1))
             db.execute(select(SavedSearch.id).limit(1))
             if db.get_bind().dialect.name == "postgresql":
                 db.execute(text("SELECT search_vector FROM job_postings LIMIT 0"))
@@ -169,7 +184,13 @@ def create_app() -> FastAPI:
                 ScrapeRun.status == "completed"
             )
         )
-        if stale_running_runs:
+        expected_cutoff = now - timedelta(seconds=get_settings().scheduler_interval_seconds * 2)
+        scan_overdue = bool(
+            last_run
+            and last_run.started_at < expected_cutoff
+            and (last_successful_at is None or last_successful_at < expected_cutoff)
+        )
+        if stale_running_runs or scan_overdue:
             status = "stale"
         elif unhealthy_sources or (last_run and last_run.status in {"failed", "abandoned", "completed_with_errors"}):
             status = "degraded"

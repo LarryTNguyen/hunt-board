@@ -1,6 +1,7 @@
 from __future__ import annotations
 
 import asyncio
+import random
 import ipaddress
 import math
 import re
@@ -190,10 +191,16 @@ class WorkdayAdapter(HttpATSAdapter):
         client: httpx.AsyncClient,
         max_retries: int = 2,
         retry_backoff_seconds: float = 0.5,
+        retry_jitter_seconds: float = 0.25,
         *,
         sleep: Callable[[float], Awaitable[None]] = asyncio.sleep,
     ) -> None:
-        super().__init__(client, max_retries=max_retries, retry_backoff_seconds=retry_backoff_seconds)
+        super().__init__(
+            client,
+            max_retries=max_retries,
+            retry_backoff_seconds=retry_backoff_seconds,
+            retry_jitter_seconds=retry_jitter_seconds,
+        )
         self.sleep = sleep
         self._pace_lock = asyncio.Lock()
         self._last_request_started = 0.0
@@ -413,16 +420,23 @@ class WorkdayAdapter(HttpATSAdapter):
             try:
                 response = await self.client.request(method, url, headers=headers, json=json_body)
             except (httpx.TimeoutException, httpx.NetworkError) as exc:
+                if isinstance(exc, httpx.TimeoutException):
+                    self.timeout_count += 1
                 if attempt >= self.max_retries:
                     raise AdapterError(
                         f"Workday request failed after {attempt + 1} attempt(s): {exc}"
                     ) from exc
-                await self.sleep(self.retry_backoff_seconds * (2**attempt))
+                self.retry_count += 1
+                await self.sleep(
+                    self.retry_backoff_seconds * (2**attempt)
+                    + random.uniform(0, self.retry_jitter_seconds)
+                )
                 continue
             if response.status_code in withdrawal_statuses:
                 raise DetailWithdrawn(f"Workday detail returned {response.status_code}")
             if response.status_code in self.TRANSIENT_STATUS_CODES:
                 if attempt < self.max_retries:
+                    self.retry_count += 1
                     await self.sleep(self._retry_delay(response, attempt))
                     continue
                 if response.status_code == 429:

@@ -1,6 +1,7 @@
 from __future__ import annotations
 
 import asyncio
+import random
 import re
 from dataclasses import dataclass, field
 from datetime import datetime, timezone
@@ -194,6 +195,7 @@ class NormalizedJob:
     posted_at: datetime | None = None
     updated_at: datetime | None = None
     locations: list[dict[str, Any]] = field(default_factory=list)
+    explicitly_closed: bool = False
 
 
 @dataclass
@@ -220,10 +222,14 @@ class HttpATSAdapter:
         client: httpx.AsyncClient,
         max_retries: int = 2,
         retry_backoff_seconds: float = 0.5,
+        retry_jitter_seconds: float = 0.25,
     ) -> None:
         self.client = client
         self.max_retries = max(0, max_retries)
         self.retry_backoff_seconds = max(0, retry_backoff_seconds)
+        self.retry_jitter_seconds = max(0, retry_jitter_seconds)
+        self.retry_count = 0
+        self.timeout_count = 0
 
     async def get_json(self, url: str) -> Any:
         for attempt in range(self.max_retries + 1):
@@ -234,6 +240,8 @@ class HttpATSAdapter:
                 return response.json()
             except (httpx.TimeoutException, httpx.NetworkError) as exc:
                 error = exc
+                if isinstance(exc, httpx.TimeoutException):
+                    self.timeout_count += 1
                 should_retry = attempt < self.max_retries
             except httpx.HTTPStatusError as exc:
                 error = exc
@@ -247,6 +255,10 @@ class HttpATSAdapter:
 
             if not should_retry:
                 raise AdapterError(f"ATS request failed after {attempt + 1} attempt(s): {error}") from error
-            await asyncio.sleep(self.retry_backoff_seconds * (2**attempt))
+            self.retry_count += 1
+            await asyncio.sleep(
+                self.retry_backoff_seconds * (2**attempt)
+                + random.uniform(0, self.retry_jitter_seconds)
+            )
 
         raise AssertionError("unreachable")

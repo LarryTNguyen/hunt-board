@@ -1,4 +1,4 @@
-# Hunt Board Architecture through Milestone 6.1
+# Hunt Board Architecture through Milestone 6.2
 
 Hunt Board uses a conventional Python `src/` layout. The FastAPI application is assembled in `hunt_board.main`, while database, ingestion, matching, job-domain, API, and admin concerns remain in separate packages.
 
@@ -40,7 +40,9 @@ The adapter registry in `ingestion/adapters/registry.py` is the only owner of su
 
 The Workday adapter is deliberately isolated around the public Candidate Experience JSON contract. It validates an explicitly configured host, tenant, site, locale, and career URL before network access. A scan first enumerates listing pages sequentially and accepts them only when the first-page total exactly matches unique safe `/job/` paths. Later nonempty pages may report Workday's observed `total: 0` sentinel; any other total change or an early empty page remains an integrity failure. It then uses a fixed-size worker pool for detail reads while preserving listing order. A possible mid-scan withdrawal permits one complete listing reconciliation. Individually identified paths that remain listed but have no detail are skipped in an explicit partial result; complete jobs may be upserted, but missed-run and closure reconciliation is suppressed for the entire source. Listing instability, duplicate paths, repeated churn that prevents complete enumeration, and non-withdrawal detail failures still fail the source atomically.
 
-Every real ingestion run acquires one global lock before recovery or writes. PostgreSQL uses a session advisory lock on a dedicated connection held through finalization; SQLite uses an in-process lock for deterministic tests. After lock acquisition, stale `running` run/source-run rows are marked `abandoned`. Unexpected exceptions roll back partial work, finalize the already-created run as `failed`, and release the lock in `finally`.
+Every real ingestion run acquires one global lock before recovery or writes. PostgreSQL uses a session advisory lock on a dedicated connection held through finalization; SQLite uses an in-process lock for deterministic tests. Lock contention persists at most one `pending` scrape run; later triggers coalesce into it, and the lock holder drains that row after the active run. After lock acquisition, stale `running` run/source-run rows are marked `abandoned`. Cancellation is cooperative at source boundaries. Unexpected exceptions roll back partial work, finalize the already-created run as `failed`, and release the lock in `finally`.
+
+Successful authoritative sources reconcile lifecycle evidence. Three consecutive successful misses, explicit source closure, a confirmed dead apply URL, or maximum age closes a posting; reappearance reactivates the same stable row. Failed, partial/non-authoritative, and quarantined results never increment misses. Mature-source zero, extreme volume, mass title/location, and mass-deactivation changes are quarantined before mutation with a sanitized decision ledger.
 
 Retention cleanup is deliberately an explicit CLI service. It replaces expired posting/version `raw_json` values with `{}` and clears their expiration markers without removing normalized records, lifecycle history, CRM state, or metrics.
 
@@ -48,9 +50,9 @@ Retention cleanup is deliberately an explicit CLI service. It replaces expired p
 
 Docker Compose runs PostgreSQL and the FastAPI backend by default. The backend is the single Compose migration/seed owner and becomes ready only after required schema queries succeed. The optional `scheduler` profile starts a separate `hunt-board scheduler` container only after the backend is healthy. It never runs inside FastAPI, keeps no scheduler database, and calls the same due-source ingestion service and advisory lock used by API, CLI, and cron runs.
 
-Production topology has one web process, PostgreSQL as source of truth, and exactly one intended scheduler process. A platform cron invoking the one-shot `hunt-board ingest` command is the preferred alternative on platforms with reliable scheduling. The lock remains necessary because manual, cron, and scheduler triggers can coincide.
+Production topology has one Render-compatible web process, Supabase PostgreSQL/Auth, and GitHub Actions (or equivalent platform cron) invoking `hunt-board ingest` every two hours. The web image never seeds or migrates on process startup; migration is a reviewed release step. Development, staging, and production use separate data/auth/provider identities. The lock remains necessary because manual, API, CLI, cron, and the optional local scheduler can coincide.
 
-The operations boundary consists of a typed aggregate read at `GET /admin/operations`, existing source/run detail and action routes, and `/app/operations.html`. It exposes safe source policy/health fields and aggregate metrics, never raw ATS payloads or source configuration JSON. `/health/live` checks only process response; `/health/ready` checks database connectivity and required schema. Ingestion degradation is reported separately and does not make the web process unready.
+The operations boundary consists of a typed aggregate read at `GET /admin/operations`, run/source detail, retry/cancel/recovery, quarantine decision, correlation lookup routes, and `/app/operations.html`. It exposes safe deployment/source/queue fields and bounded aggregate metrics, never raw ATS payloads, descriptions, user-private fields, or source configuration JSON. `/health/live` checks only process response; `/health/ready` checks database connectivity and required schema. Ingestion degradation is reported separately and does not make the web process unready.
 
 ## Deliberate boundaries
 

@@ -11,6 +11,13 @@ const runDetail = document.querySelector('[data-run-detail]');
 const message = document.querySelector('[data-operation-message]');
 const invitationList = document.querySelector('[data-invitation-list]');
 const invitationForm = document.querySelector('[data-invitation-form]');
+const deploymentHost = document.querySelector('[data-deployment]');
+const queueHost = document.querySelector('[data-queue-state]');
+const metricsHost = document.querySelector('[data-operations-metrics]');
+const quarantineList = document.querySelector('[data-quarantine-list]');
+const quarantineCount = document.querySelector('[data-quarantine-count]');
+const correlationForm = document.querySelector('[data-correlation-form]');
+const correlationResults = document.querySelector('[data-correlation-results]');
 let operations = null;
 let selectedRunId = null;
 
@@ -36,9 +43,33 @@ async function loadInvitations() {
 
 function tone(status) {
   if (['completed', 'healthy'].includes(status)) return 'positive';
-  if (['failed', 'abandoned', 'unhealthy', 'completed_with_errors'].includes(status)) return 'negative';
-  if (status === 'running') return 'active';
+  if (['failed', 'abandoned', 'unhealthy', 'completed_with_errors', 'cancelled'].includes(status)) return 'negative';
+  if (['running', 'pending', 'quarantined'].includes(status)) return 'active';
   return 'neutral';
+}
+
+function renderDeploymentAndQueue() {
+  const deploy = operations.deployment;
+  deploymentHost.innerHTML = `<strong>${esc(deploy.environment.toUpperCase())}</strong><span>Release ${esc(deploy.release)}</span><span>Deploy ${esc(deploy.deployment_id)}</span><span class="health-pair"><i></i> Web ${esc(deploy.web)} · DB ${esc(deploy.database)}</span>`;
+  const ingestion = operations.ingestion;
+  const active = ingestion.active_run_id
+    ? `<article class="queue-node is-active"><small>Active</small><strong>Run #${ingestion.active_run_id}</strong><button class="button button-quiet" type="button" data-cancel-run="${ingestion.active_run_id}">Cancel</button></article>`
+    : '<article class="queue-node"><small>Active</small><strong>Idle</strong></article>';
+  const pending = ingestion.pending_run_id
+    ? `<article class="queue-node is-pending"><small>Pending</small><strong>Run #${ingestion.pending_run_id}</strong><button class="button button-quiet" type="button" data-cancel-run="${ingestion.pending_run_id}">Cancel</button></article>`
+    : '<article class="queue-node"><small>Pending</small><strong>Empty</strong></article>';
+  const joined = `<article class="queue-node"><small>Joined requests</small><strong>${ingestion.pending_coalesced_triggers}</strong></article>`;
+  queueHost.innerHTML = `${active}<span aria-hidden="true">→</span>${pending}<span aria-hidden="true">→</span>${joined}`;
+  const metrics = operations.metrics;
+  const cards = [
+    ['Runs', metrics.runs_last_24_hours],
+    ['Failed / degraded', metrics.failed_runs_last_24_hours],
+    ['Retries', metrics.retries_last_24_hours],
+    ['Timeouts', metrics.timeouts_last_24_hours],
+    ['Pending quarantines', metrics.quarantines_pending],
+    ['Average source time', `${metrics.average_source_duration_ms} ms`],
+  ];
+  metricsHost.innerHTML = cards.map(([name, value]) => `<article class="operation-stat"><small>${esc(name)}</small><strong>${esc(value)}</strong></article>`).join('');
 }
 
 function renderSystemStatus() {
@@ -77,7 +108,21 @@ function renderRuns() {
     runDetail.innerHTML = '<p>Source metrics will appear after a run is selected.</p>';
     return;
   }
-  runList.innerHTML = operations.recent_runs.map((run) => `<button class="run-record ${run.id === selectedRunId ? 'is-selected' : ''}" type="button" data-run-id="${run.id}"><span class="status status-${tone(run.status)}">${esc(label(run.status))}</span><strong>Run #${run.id}</strong><small>${esc(absoluteDate(run.started_at))}</small><span>${run.total_jobs_seen} jobs / ${run.total_errors} errors</span></button>`).join('');
+  runList.innerHTML = operations.recent_runs.map((run) => `<article class="run-record ${run.id === selectedRunId ? 'is-selected' : ''}"><button class="run-record-main" type="button" data-run-id="${run.id}"><span class="status status-${tone(run.status)}">${esc(label(run.status))}</span><strong>Run #${run.id}</strong><small>${esc(absoluteDate(run.started_at))}</small><span>${run.total_jobs_seen} jobs / ${run.total_errors} errors</span><code>${esc(run.trace_id || run.request_id || 'No trace ID')}</code></button><div class="run-record-actions">${['failed', 'completed_with_errors', 'abandoned'].includes(run.status) ? `<button class="button button-quiet" type="button" data-retry-run="${run.id}">Retry failed</button>` : ''}${['running', 'pending'].includes(run.status) ? `<button class="button button-quiet" type="button" data-cancel-run="${run.id}">Cancel</button>` : ''}</div></article>`).join('');
+}
+
+async function loadQuarantines() {
+  try {
+    const items = await api.quarantines('pending');
+    quarantineCount.textContent = `${items.length} awaiting decision`;
+    if (!items.length) {
+      renderEmpty(quarantineList, 'No suspicious changes waiting', 'Quarantined scan results appear here before destructive reconciliation.');
+      return;
+    }
+    quarantineList.innerHTML = items.map((item) => `<article class="quarantine-record"><div><span class="status status-active">Quarantined</span><h3>${esc(item.source_slug)}</h3><p>${esc(item.reason)}</p><small>Run #${item.scrape_run_id} · ${esc(absoluteDate(item.created_at))}</small></div><dl>${Object.entries(item.diff_summary).map(([key, value]) => `<div><dt>${esc(label(key))}</dt><dd>${esc(value)}</dd></div>`).join('')}</dl><div class="action-row"><button class="button button-primary" type="button" data-approve-quarantine="${item.id}">Approve and rescan</button><button class="button button-quiet" type="button" data-reject-quarantine="${item.id}">Reject result</button></div></article>`).join('');
+  } catch (error) {
+    renderError(quarantineList, error, loadQuarantines);
+  }
 }
 
 async function selectRun(runId) {
@@ -90,7 +135,7 @@ async function selectRun(runId) {
       renderEmpty(runDetail, 'No source records', 'This run did not inspect a source.');
       return;
     }
-    runDetail.innerHTML = `<div class="run-detail-head"><p class="utility-label">Run #${runId}</p><h3>Source metrics</h3></div>${items.map((item) => `<article class="source-run"><div><strong>${esc(item.source_slug)}</strong><span class="status status-${tone(item.status)}">${esc(label(item.status))}</span></div><dl><div><dt>Seen</dt><dd>${item.jobs_seen}</dd></div><div><dt>New</dt><dd>${item.new_jobs}</dd></div><div><dt>Updated</dt><dd>${item.updated_jobs}</dd></div><div><dt>Unchanged</dt><dd>${item.unchanged_jobs}</dd></div><div><dt>Closed</dt><dd>${item.closed_jobs}</dd></div><div><dt>Duplicates</dt><dd>${item.duplicates_found}</dd></div><div><dt>Errors</dt><dd>${item.error_count}</dd></div><div><dt>Duration</dt><dd>${item.duration_ms ?? 0} ms</dd></div></dl>${item.error_message ? `<p class="source-error">${esc(item.error_message)}</p>` : ''}</article>`).join('')}`;
+    runDetail.innerHTML = `<div class="run-detail-head"><p class="utility-label">Run #${runId}</p><h3>Source metrics</h3></div>${items.map((item) => `<article class="source-run"><div><strong>${esc(item.source_slug)}</strong><span class="status status-${tone(item.status)}">${esc(label(item.status))}</span></div><dl><div><dt>Seen</dt><dd>${item.jobs_seen}</dd></div><div><dt>New</dt><dd>${item.new_jobs}</dd></div><div><dt>Updated</dt><dd>${item.updated_jobs}</dd></div><div><dt>Reactivated</dt><dd>${item.reactivated_jobs}</dd></div><div><dt>Closed</dt><dd>${item.closed_jobs}</dd></div><div><dt>Retries</dt><dd>${item.retry_count}</dd></div><div><dt>Timeouts</dt><dd>${item.timeout_count}</dd></div><div><dt>Parser failures</dt><dd>${item.parser_failure_count}</dd></div><div><dt>Duplicates</dt><dd>${item.duplicates_found}</dd></div><div><dt>Errors</dt><dd>${item.error_count}</dd></div><div><dt>Duration</dt><dd>${item.duration_ms ?? 0} ms</dd></div></dl>${item.error_message ? `<p class="source-error">${esc(item.error_message)}</p>` : ''}</article>`).join('')}`;
   } catch (error) {
     renderError(runDetail, error, () => selectRun(runId));
   }
@@ -129,6 +174,7 @@ async function loadOperations() {
   loading(runList, 'Reading recent runs…');
   try {
     operations = await api.operations();
+    renderDeploymentAndQueue();
     renderSystemStatus();
     renderSources();
     renderRuns();
@@ -146,6 +192,11 @@ document.querySelector('[data-run-real]').addEventListener('click', () => {
   if (window.confirm('Run all enabled sources that are currently due? This writes refreshed job and run records.')) perform('Run due sources', () => api.runDueSources(false));
 });
 document.querySelector('[data-sync]').addEventListener('click', () => perform('Sync YAML sources', api.syncSources));
+document.querySelector('[data-recover]').addEventListener('click', () => perform('Recover stale runs', api.recoverStaleRuns));
+queueHost.addEventListener('click', (event) => {
+  const cancel = event.target.closest('[data-cancel-run]');
+  if (cancel && window.confirm(`Cancel run #${cancel.dataset.cancelRun}?`)) perform(`Cancel run #${cancel.dataset.cancelRun}`, () => api.cancelRun(cancel.dataset.cancelRun));
+});
 sourceBoard.addEventListener('click', (event) => {
   const dry = event.target.closest('[data-source-dry]');
   const real = event.target.closest('[data-source-real]');
@@ -155,6 +206,36 @@ sourceBoard.addEventListener('click', (event) => {
 runList.addEventListener('click', (event) => {
   const button = event.target.closest('[data-run-id]');
   if (button) selectRun(Number(button.dataset.runId));
+  const retry = event.target.closest('[data-retry-run]');
+  if (retry) perform(`Retry failed companies from run #${retry.dataset.retryRun}`, () => api.retryFailedSources(retry.dataset.retryRun));
+  const cancel = event.target.closest('[data-cancel-run]');
+  if (cancel && window.confirm(`Cancel run #${cancel.dataset.cancelRun}?`)) perform(`Cancel run #${cancel.dataset.cancelRun}`, () => api.cancelRun(cancel.dataset.cancelRun));
+});
+quarantineList.addEventListener('click', async (event) => {
+  const approve = event.target.closest('[data-approve-quarantine]');
+  const reject = event.target.closest('[data-reject-quarantine]');
+  if (approve && window.confirm('Approve this result and immediately rescan the source?')) {
+    await perform('Approve quarantine and rescan', () => api.approveQuarantine(approve.dataset.approveQuarantine));
+    await loadQuarantines();
+  }
+  if (reject && window.confirm('Reject this source result? No job lifecycle evidence will be applied.')) {
+    await perform('Reject quarantine', () => api.rejectQuarantine(reject.dataset.rejectQuarantine));
+    await loadQuarantines();
+  }
+});
+correlationForm.addEventListener('submit', async (event) => {
+  event.preventDefault();
+  loading(correlationResults, 'Finding correlated run metadata…');
+  try {
+    const result = await api.correlationLookup(new FormData(correlationForm).get('identifier'));
+    if (!result.runs.length) {
+      renderEmpty(correlationResults, 'No run metadata found', 'Search your log or trace provider for the exact ID, or verify the value.');
+      return;
+    }
+    correlationResults.innerHTML = result.runs.map((run) => `<article class="correlation-result"><strong>Run #${run.run_id}</strong><span>${esc(label(run.status))}</span><code>${esc(run.request_id || 'No request ID')}</code><code>${esc(run.trace_id || 'No trace ID')}</code></article>`).join('');
+  } catch (error) {
+    renderError(correlationResults, error, () => correlationForm.requestSubmit());
+  }
 });
 invitationForm.addEventListener('submit', async (event) => {
   event.preventDefault();
@@ -187,3 +268,4 @@ invitationList.addEventListener('click', async (event) => {
 
 loadOperations();
 loadInvitations();
+loadQuarantines();

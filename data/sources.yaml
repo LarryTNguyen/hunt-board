@@ -8,7 +8,7 @@ sources:
     enabled: true
     priority: 1
     poll_interval_minutes: 1440
-    close_after_missed_runs: 12
+    close_after_missed_runs: 3
     config:
       board_token: discord
 
@@ -21,7 +21,7 @@ sources:
     enabled: true
     priority: 1
     poll_interval_minutes: 1440
-    close_after_missed_runs: 12
+    close_after_missed_runs: 3
     config:
       site: gohighlevel
 
@@ -34,7 +34,7 @@ sources:
     enabled: true
     priority: 1
     poll_interval_minutes: 1440
-    close_after_missed_runs: 12
+    close_after_missed_runs: 3
     config:
       organization: notion
 
@@ -47,7 +47,7 @@ sources:
     enabled: true
     priority: 1
     poll_interval_minutes: 1440
-    close_after_missed_runs: 12
+    close_after_missed_runs: 3
     config:
       host: workday.wd5.myworkdayjobs.com
       tenant: workday
@@ -69,7 +69,7 @@ sources:
     enabled: true
     priority: 1
     poll_interval_minutes: 1440
-    close_after_missed_runs: 12
+    close_after_missed_runs: 3
     categories: [finance-accounting, marketing-communications, operations-supply-chain, design-user-experience]
     notes: Public Greenhouse board; fashion, retail, finance, logistics, and brand coverage.
     config:
@@ -84,7 +84,7 @@ sources:
     enabled: true
     priority: 1
     poll_interval_minutes: 1440
-    close_after_missed_runs: 12
+    close_after_missed_runs: 3
     categories: [finance-accounting, legal-compliance, sales-business-development, marketing-communications, operations-supply-chain]
     notes: Public Greenhouse board; capital-markets and corporate-function coverage.
     config:
@@ -99,7 +99,7 @@ sources:
     enabled: true
     priority: 1
     poll_interval_minutes: 1440
-    close_after_missed_runs: 12
+    close_after_missed_runs: 3
     categories: [design-user-experience, product-management, sales-business-development, marketing-communications]
     notes: Public Greenhouse board; design-led product and go-to-market coverage.
     config:
@@ -114,7 +114,7 @@ sources:
     enabled: true
     priority: 1
     poll_interval_minutes: 1440
-    close_after_missed_runs: 12
+    close_after_missed_runs: 3
     categories: [legal-compliance, consulting-strategy, marketing-communications, sales-business-development]
     notes: Public Ashby board; legal-professional-services and go-to-market coverage.
     config:
@@ -129,7 +129,7 @@ sources:
     enabled: true
     priority: 1
     poll_interval_minutes: 1440
-    close_after_missed_runs: 12
+    close_after_missed_runs: 3
     categories: [marketing-communications, finance-accounting, legal-compliance, human-resources-recruiting, operations-supply-chain]
     notes: Public Ashby board; corporate-function roles complement engineering coverage.
     config:

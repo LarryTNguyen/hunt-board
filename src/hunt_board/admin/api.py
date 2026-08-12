@@ -18,10 +18,20 @@ from hunt_board.api.schemas import (
     SourceRead,
     SourceSyncRead,
     ClassificationOverrideUpdate,
+    QuarantineDecision,
+    QuarantineRead,
 )
 from hunt_board.auth.dependencies import require_admin
 from hunt_board.core.config import Settings, get_settings
-from hunt_board.db.models import DuplicateReview, JobPosting, ScrapeRun, ScrapeSourceRun, Source
+from hunt_board.db.models import (
+    DuplicateReview,
+    IngestionQuarantine,
+    JobLifecycleEvent,
+    JobPosting,
+    ScrapeRun,
+    ScrapeSourceRun,
+    Source,
+)
 from hunt_board.db.session import get_db
 from hunt_board.ingestion.registry import sync_sources_from_yaml
 from hunt_board.ingestion.lock import IngestionAlreadyRunningError
@@ -92,6 +102,16 @@ def operations_summary(db: Session = Depends(get_db)) -> dict:
         )
         or 0
     )
+    active_run = db.scalar(
+        select(ScrapeRun)
+        .where(ScrapeRun.status == "running", ScrapeRun.started_at >= stale_cutoff)
+        .order_by(ScrapeRun.started_at.asc())
+    )
+    pending_run = db.scalar(
+        select(ScrapeRun)
+        .where(ScrapeRun.status == "pending")
+        .order_by(ScrapeRun.created_at.asc())
+    )
     source_totals = db.execute(
         select(
             func.count(Source.id),
@@ -132,6 +152,9 @@ def operations_summary(db: Session = Depends(get_db)) -> dict:
         "generated_at": now,
         "ingestion": {
             "run_in_progress": run_in_progress,
+            "active_run_id": active_run.id if active_run else None,
+            "pending_run_id": pending_run.id if pending_run else None,
+            "pending_coalesced_triggers": pending_run.coalesced_triggers if pending_run else 0,
             "last_run": last_run,
             "last_successful_at": last_successful_at,
             "next_due_at": next_due_at,
@@ -163,6 +186,8 @@ def operations_summary(db: Session = Depends(get_db)) -> dict:
                     "last_successful_at": source.last_successful_at,
                     "last_error": source.last_error[:300] if source.last_error else None,
                     "next_due_at": source.next_due_at,
+                    "last_successful_job_count": source.last_successful_job_count,
+                    "quarantine_count": source.quarantine_count,
                 }
                 for source in sources
             ],
@@ -174,6 +199,89 @@ def operations_summary(db: Session = Depends(get_db)) -> dict:
             "updated_last_24_hours": int(job_totals[3] or 0),
         },
         "recent_runs": recent_runs,
+        "deployment": {
+            "environment": get_settings().environment,
+            "release": get_settings().release,
+            "deployment_id": get_settings().deployment_id,
+            "process": get_settings().process_name,
+            "web": "healthy",
+            "database": "healthy",
+        },
+        "metrics": _safe_operations_metrics(db, now),
+    }
+
+
+def _safe_operations_metrics(db: Session, now: datetime) -> dict[str, int | float | str | None]:
+    day_ago = now - timedelta(hours=24)
+    source_duration = db.execute(
+        select(func.count(ScrapeSourceRun.id), func.avg(ScrapeSourceRun.duration_ms)).where(
+            ScrapeSourceRun.created_at >= day_ago
+        )
+    ).one()
+    source_outcomes = db.execute(
+        select(
+            func.sum(case((ScrapeSourceRun.status == "completed", 1), else_=0)),
+            func.sum(case((ScrapeSourceRun.status == "failed", 1), else_=0)),
+            func.sum(case((ScrapeSourceRun.status == "quarantined", 1), else_=0)),
+            func.coalesce(func.sum(ScrapeSourceRun.new_jobs), 0),
+            func.coalesce(func.sum(ScrapeSourceRun.updated_jobs), 0),
+            func.coalesce(func.sum(ScrapeSourceRun.reactivated_jobs), 0),
+            func.coalesce(func.sum(ScrapeSourceRun.closed_jobs), 0),
+            func.coalesce(func.sum(ScrapeSourceRun.parser_failure_count), 0),
+        ).where(ScrapeSourceRun.created_at >= day_ago)
+    ).one()
+    recent_day_runs = list(
+        db.scalars(select(ScrapeRun).where(ScrapeRun.created_at >= day_ago)).all()
+    )
+    last_success = db.scalar(
+        select(func.max(ScrapeRun.finished_at)).where(ScrapeRun.status == "completed")
+    )
+    return {
+        "runs_last_24_hours": int(
+            db.scalar(select(func.count(ScrapeRun.id)).where(ScrapeRun.created_at >= day_ago)) or 0
+        ),
+        "failed_runs_last_24_hours": int(
+            db.scalar(
+                select(func.count(ScrapeRun.id)).where(
+                    ScrapeRun.created_at >= day_ago,
+                    ScrapeRun.status.in_({"failed", "abandoned", "completed_with_errors"}),
+                )
+            ) or 0
+        ),
+        "quarantines_pending": int(
+            db.scalar(
+                select(func.count(IngestionQuarantine.id)).where(
+                    IngestionQuarantine.status == "pending"
+                )
+            ) or 0
+        ),
+        "retries_last_24_hours": int(
+            db.scalar(
+                select(func.coalesce(func.sum(ScrapeSourceRun.retry_count), 0)).where(
+                    ScrapeSourceRun.created_at >= day_ago
+                )
+            ) or 0
+        ),
+        "timeouts_last_24_hours": int(
+            db.scalar(
+                select(func.coalesce(func.sum(ScrapeSourceRun.timeout_count), 0)).where(
+                    ScrapeSourceRun.created_at >= day_ago
+                )
+            ) or 0
+        ),
+        "source_runs_last_24_hours": int(source_duration[0] or 0),
+        "companies_planned_last_24_hours": sum(len(run.sources_requested) for run in recent_day_runs),
+        "companies_succeeded_last_24_hours": int(source_outcomes[0] or 0),
+        "companies_failed_last_24_hours": int(source_outcomes[1] or 0),
+        "companies_quarantined_last_24_hours": int(source_outcomes[2] or 0),
+        "jobs_inserted_last_24_hours": int(source_outcomes[3] or 0),
+        "jobs_updated_last_24_hours": int(source_outcomes[4] or 0),
+        "jobs_reactivated_last_24_hours": int(source_outcomes[5] or 0),
+        "jobs_inactivated_last_24_hours": int(source_outcomes[6] or 0),
+        "parser_failures_last_24_hours": int(source_outcomes[7] or 0),
+        "coalesced_triggers_last_24_hours": sum(run.coalesced_triggers for run in recent_day_runs),
+        "average_source_duration_ms": round(float(source_duration[1] or 0), 1),
+        "last_successful_scan_at": last_success.isoformat() if last_success else None,
     }
 
 
@@ -218,7 +326,11 @@ async def run_source(source_id: int, dry_run: bool = False, db: Session = Depend
         raise HTTPException(status_code=409, detail=str(exc)) from exc
 
 
-def _ingestion_service(settings: Settings) -> IngestionService:
+def _ingestion_service(
+    settings: Settings,
+    *,
+    approved_quarantine_sources: set[str] | None = None,
+) -> IngestionService:
     return IngestionService(
         str(settings.sources_path),
         settings.http_timeout_seconds,
@@ -226,6 +338,14 @@ def _ingestion_service(settings: Settings) -> IngestionService:
         settings.http_max_retries,
         settings.http_retry_backoff_seconds,
         stale_run_minutes=settings.stale_run_minutes,
+        retry_jitter_seconds=settings.http_retry_jitter_seconds,
+        run_timeout_seconds=settings.run_timeout_seconds,
+        anomaly_zero_quarantine=settings.anomaly_zero_quarantine,
+        anomaly_volume_change_ratio=settings.anomaly_volume_change_ratio,
+        anomaly_mass_change_ratio=settings.anomaly_mass_change_ratio,
+        max_job_age_days=settings.max_job_age_days,
+        approved_quarantine_sources=approved_quarantine_sources,
+        queue_on_contention=True,
     )
 
 
@@ -254,6 +374,187 @@ def list_scrape_source_runs(run_id: int, db: Session = Depends(get_db)) -> list[
             .order_by(ScrapeSourceRun.started_at.asc())
         ).all()
     )
+
+
+@router.get("/scrape-source-runs/{source_run_id}", response_model=ScrapeSourceRunRead)
+def get_scrape_source_run(source_run_id: int, db: Session = Depends(get_db)) -> ScrapeSourceRun:
+    source_run = db.get(ScrapeSourceRun, source_run_id)
+    if source_run is None:
+        raise HTTPException(status_code=404, detail="Source run not found")
+    return source_run
+
+
+@router.post("/scrape-runs/{run_id}/retry-failed", response_model=IngestRunResponse)
+async def retry_failed_sources(run_id: int, db: Session = Depends(get_db)) -> dict:
+    if db.get(ScrapeRun, run_id) is None:
+        raise HTTPException(status_code=404, detail="Scrape run not found")
+    failed_slugs = list(
+        db.scalars(
+            select(ScrapeSourceRun.source_slug)
+            .where(
+                ScrapeSourceRun.scrape_run_id == run_id,
+                ScrapeSourceRun.status.in_({"failed", "abandoned"}),
+            )
+            .distinct()
+        ).all()
+    )
+    if not failed_slugs:
+        raise HTTPException(status_code=409, detail="This run has no failed companies to retry")
+    return asdict(
+        await _ingestion_service(get_settings()).run(
+            db, failed_slugs, False, triggered_by="admin_retry"
+        )
+    )
+
+
+@router.post("/scrape-runs/{run_id}/cancel")
+def cancel_scrape_run(run_id: int, db: Session = Depends(get_db)) -> dict:
+    run = db.get(ScrapeRun, run_id)
+    if run is None:
+        raise HTTPException(status_code=404, detail="Scrape run not found")
+    if run.status not in {"running", "pending"}:
+        raise HTTPException(status_code=409, detail="Only active or pending runs can be cancelled")
+    now = datetime.now(timezone.utc)
+    run.cancel_requested_at = now
+    if run.status == "pending":
+        run.status = "cancelled"
+        run.cancelled_at = run.finished_at = now
+        run.duration_ms = 0
+    db.commit()
+    metrics.observe_scan_event("cancel", run.status)
+    return {"run_id": run.id, "status": run.status, "cancel_requested_at": now}
+
+
+@router.post("/ingestion/recover-stale")
+def recover_stale_runs(db: Session = Depends(get_db)) -> dict:
+    recovered = _ingestion_service(get_settings())._recover_stale_runs(db)
+    db.commit()
+    return {"status": "completed", "recovered_runs": recovered}
+
+
+@router.get("/quarantines", response_model=list[QuarantineRead])
+def list_quarantines(
+    status: str | None = Query(default="pending"),
+    db: Session = Depends(get_db),
+) -> list[IngestionQuarantine]:
+    statement = select(IngestionQuarantine).order_by(IngestionQuarantine.created_at.desc())
+    if status is not None:
+        statement = statement.where(IngestionQuarantine.status == status)
+    return list(db.scalars(statement).all())
+
+
+@router.get("/quarantines/{quarantine_id}", response_model=QuarantineRead)
+def get_quarantine(quarantine_id: int, db: Session = Depends(get_db)) -> IngestionQuarantine:
+    quarantine = db.get(IngestionQuarantine, quarantine_id)
+    if quarantine is None:
+        raise HTTPException(status_code=404, detail="Quarantine not found")
+    return quarantine
+
+
+@router.post("/quarantines/{quarantine_id}/reject", response_model=QuarantineRead)
+def reject_quarantine(
+    quarantine_id: int,
+    payload: QuarantineDecision,
+    user=Depends(require_admin),
+    db: Session = Depends(get_db),
+) -> IngestionQuarantine:
+    quarantine = db.get(IngestionQuarantine, quarantine_id)
+    if quarantine is None:
+        raise HTTPException(status_code=404, detail="Quarantine not found")
+    if quarantine.status != "pending":
+        raise HTTPException(status_code=409, detail="Quarantine was already decided")
+    quarantine.status = "rejected"
+    quarantine.decided_at = datetime.now(timezone.utc)
+    quarantine.decided_by_user_id = user.id
+    quarantine.decision_note = payload.note
+    source_run = db.get(ScrapeSourceRun, quarantine.scrape_source_run_id)
+    if source_run:
+        source_run.quarantine_status = "rejected"
+    db.commit()
+    metrics.observe_scan_event("quarantine", "rejected")
+    return quarantine
+
+
+@router.post("/quarantines/{quarantine_id}/approve", response_model=IngestRunResponse)
+async def approve_quarantine(
+    quarantine_id: int,
+    payload: QuarantineDecision,
+    user=Depends(require_admin),
+    db: Session = Depends(get_db),
+) -> dict:
+    quarantine = db.get(IngestionQuarantine, quarantine_id)
+    if quarantine is None:
+        raise HTTPException(status_code=404, detail="Quarantine not found")
+    if quarantine.status != "pending":
+        raise HTTPException(status_code=409, detail="Quarantine was already decided")
+    quarantine.status = "approved"
+    quarantine.decided_at = datetime.now(timezone.utc)
+    quarantine.decided_by_user_id = user.id
+    quarantine.decision_note = payload.note
+    source_run = db.get(ScrapeSourceRun, quarantine.scrape_source_run_id)
+    if source_run:
+        source_run.quarantine_status = "approved"
+    db.commit()
+    metrics.observe_scan_event("quarantine", "approved")
+    service = _ingestion_service(
+        get_settings(), approved_quarantine_sources={quarantine.source_slug}
+    )
+    return asdict(
+        await service.run(
+            db, [quarantine.source_slug], False, triggered_by="quarantine_approval"
+        )
+    )
+
+
+@router.get("/operations/correlation")
+def correlation_lookup(
+    identifier: str = Query(min_length=1, max_length=64),
+    db: Session = Depends(get_db),
+) -> dict:
+    runs = list(
+        db.scalars(
+            select(ScrapeRun).where(
+                or_(ScrapeRun.request_id == identifier, ScrapeRun.trace_id == identifier)
+            )
+        ).all()
+    )
+    return {
+        "identifier": identifier,
+        "runs": [
+            {
+                "run_id": run.id,
+                "status": run.status,
+                "request_id": run.request_id,
+                "trace_id": run.trace_id,
+                "started_at": run.started_at,
+            }
+            for run in runs
+        ],
+        "lookup_hint": "Search structured logs for the exact request_id or trace_id value.",
+    }
+
+
+@router.post("/jobs/{job_id}/confirm-closed-url")
+def confirm_closed_application_url(job_id: int, db: Session = Depends(get_db)) -> dict:
+    job = db.get(JobPosting, job_id)
+    if job is None:
+        raise HTTPException(status_code=404, detail="Job not found")
+    if not job.active:
+        return {"job_id": job.id, "status": "already_closed"}
+    now = datetime.now(timezone.utc)
+    job.active = False
+    job.closed_at = now
+    db.add(
+        JobLifecycleEvent(
+            job_posting_id=job.id,
+            source_id=job.source_id,
+            event_type="closed",
+            reason="administrator confirmed dead or closed application URL",
+            occurred_at=now,
+        )
+    )
+    db.commit()
+    return {"job_id": job.id, "status": "closed", "closed_at": now}
 
 
 @router.get("/duplicates", response_model=list[DuplicateReviewRead])

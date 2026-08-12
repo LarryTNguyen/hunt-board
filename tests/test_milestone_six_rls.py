@@ -61,8 +61,8 @@ def test_postgres_rls_isolates_two_users_and_blocks_owner_reassignment() -> None
             revision = connection.scalar(
                 text("SELECT version_num FROM alembic_version")
             )
-            if revision != "202608030015":
-                pytest.skip("PostgreSQL test database is not at Milestone 6.1 head")
+            if revision != "202608040016":
+                pytest.skip("PostgreSQL test database is not at Milestone 6.2 head")
             try:
                 connection.execute(text(f'CREATE ROLE "{role_name}" NOLOGIN'))
             except DBAPIError:

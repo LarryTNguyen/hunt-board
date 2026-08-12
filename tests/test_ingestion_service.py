@@ -121,7 +121,7 @@ async def test_ingestion_writes_metrics_and_marks_closed(db_session) -> None:
     assert stored.source.company_logo_url == "https://example.com/acme-logo.svg"
 
     service = IngestionService(str(SOURCE_FILE), adapter_overrides={"acme": FakeAdapter([_job("1")])})
-    for _ in range(11):
+    for _ in range(2):
         interim = await service.run(db_session, ["acme"])
         assert interim.total_closed == 0
     second = await service.run(db_session, ["acme"])
@@ -129,7 +129,7 @@ async def test_ingestion_writes_metrics_and_marks_closed(db_session) -> None:
     assert second.total_closed == 1
     inactive = db_session.scalar(select(JobPosting).where(JobPosting.external_job_id == "2"))
     assert inactive.active is False
-    assert inactive.consecutive_missed_runs == 12
+    assert inactive.consecutive_missed_runs == 3
 
 
 @pytest.mark.asyncio()

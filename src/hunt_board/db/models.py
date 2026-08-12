@@ -113,7 +113,7 @@ class Source(TimestampMixin, Base):
     enabled: Mapped[bool] = mapped_column(Boolean, default=True, nullable=False)
     priority: Mapped[int] = mapped_column(Integer, default=0, nullable=False)
     poll_interval_minutes: Mapped[int | None] = mapped_column(Integer)
-    close_after_missed_runs: Mapped[int] = mapped_column(Integer, default=12, nullable=False)
+    close_after_missed_runs: Mapped[int] = mapped_column(Integer, default=3, nullable=False)
     categories: Mapped[list[str]] = mapped_column(JSON, default=list, nullable=False)
     notes: Mapped[str] = mapped_column(Text, default="", nullable=False)
     config_json: Mapped[dict[str, Any]] = mapped_column(JSON, default=dict, nullable=False)
@@ -123,6 +123,8 @@ class Source(TimestampMixin, Base):
     last_successful_at: Mapped[datetime | None] = mapped_column(DateTime(timezone=True))
     last_error: Mapped[str | None] = mapped_column(Text)
     next_due_at: Mapped[datetime | None] = mapped_column(DateTime(timezone=True))
+    last_successful_job_count: Mapped[int | None] = mapped_column(Integer)
+    quarantine_count: Mapped[int] = mapped_column(Integer, default=0, nullable=False)
 
     job_postings: Mapped[list[JobPosting]] = relationship(back_populates="source")
 
@@ -423,11 +425,19 @@ class ScrapeRun(TimestampMixin, Base):
     status: Mapped[str] = mapped_column(String(40), nullable=False)
     dry_run: Mapped[bool] = mapped_column(Boolean, default=False, nullable=False)
     triggered_by: Mapped[str] = mapped_column(String(80), default="api", nullable=False)
+    request_id: Mapped[str | None] = mapped_column(String(64))
+    trace_id: Mapped[str | None] = mapped_column(String(64))
+    environment: Mapped[str] = mapped_column(String(24), default="development", nullable=False)
+    release: Mapped[str] = mapped_column(String(120), default="development", nullable=False)
+    coalesced_triggers: Mapped[int] = mapped_column(Integer, default=0, nullable=False)
+    cancel_requested_at: Mapped[datetime | None] = mapped_column(DateTime(timezone=True))
+    cancelled_at: Mapped[datetime | None] = mapped_column(DateTime(timezone=True))
     sources_requested: Mapped[list[str]] = mapped_column(JSON, default=list, nullable=False)
     total_sources_checked: Mapped[int] = mapped_column(Integer, default=0, nullable=False)
     total_jobs_seen: Mapped[int] = mapped_column(Integer, default=0, nullable=False)
     total_new_jobs: Mapped[int] = mapped_column(Integer, default=0, nullable=False)
     total_updated_jobs: Mapped[int] = mapped_column(Integer, default=0, nullable=False)
+    total_reactivated_jobs: Mapped[int] = mapped_column(Integer, default=0, nullable=False)
     total_unchanged_jobs: Mapped[int] = mapped_column(Integer, default=0, nullable=False)
     total_closed_jobs: Mapped[int] = mapped_column(Integer, default=0, nullable=False)
     total_duplicates: Mapped[int] = mapped_column(Integer, default=0, nullable=False)
@@ -454,6 +464,7 @@ class ScrapeSourceRun(TimestampMixin, Base):
     jobs_seen: Mapped[int] = mapped_column(Integer, default=0, nullable=False)
     new_jobs: Mapped[int] = mapped_column(Integer, default=0, nullable=False)
     updated_jobs: Mapped[int] = mapped_column(Integer, default=0, nullable=False)
+    reactivated_jobs: Mapped[int] = mapped_column(Integer, default=0, nullable=False)
     unchanged_jobs: Mapped[int] = mapped_column(Integer, default=0, nullable=False)
     closed_jobs: Mapped[int] = mapped_column(Integer, default=0, nullable=False)
     duplicates_found: Mapped[int] = mapped_column(Integer, default=0, nullable=False)
@@ -461,12 +472,48 @@ class ScrapeSourceRun(TimestampMixin, Base):
     upserted_count: Mapped[int] = mapped_column(Integer, default=0, nullable=False)
     closed_count: Mapped[int] = mapped_column(Integer, default=0, nullable=False)
     error_count: Mapped[int] = mapped_column(Integer, default=0, nullable=False)
+    retry_count: Mapped[int] = mapped_column(Integer, default=0, nullable=False)
+    timeout_count: Mapped[int] = mapped_column(Integer, default=0, nullable=False)
+    parser_failure_count: Mapped[int] = mapped_column(Integer, default=0, nullable=False)
+    quarantine_status: Mapped[str | None] = mapped_column(String(40))
+    trace_id: Mapped[str | None] = mapped_column(String(64))
     error_message: Mapped[str | None] = mapped_column(Text)
     started_at: Mapped[datetime] = mapped_column(DateTime(timezone=True), default=utcnow, nullable=False)
     finished_at: Mapped[datetime | None] = mapped_column(DateTime(timezone=True))
     duration_ms: Mapped[int | None] = mapped_column(Integer)
 
     scrape_run: Mapped[ScrapeRun] = relationship(back_populates="source_runs")
+
+
+class IngestionQuarantine(TimestampMixin, Base):
+    __tablename__ = "ingestion_quarantines"
+    __table_args__ = (Index("ix_ingestion_quarantines_status_created", "status", "created_at"),)
+
+    id: Mapped[int] = mapped_column(Integer, primary_key=True)
+    scrape_run_id: Mapped[int] = mapped_column(ForeignKey("scrape_runs.id"), nullable=False)
+    scrape_source_run_id: Mapped[int] = mapped_column(ForeignKey("scrape_source_runs.id"), nullable=False)
+    source_id: Mapped[int] = mapped_column(ForeignKey("sources.id"), nullable=False)
+    source_slug: Mapped[str] = mapped_column(String(120), nullable=False)
+    status: Mapped[str] = mapped_column(String(40), default="pending", nullable=False)
+    reason: Mapped[str] = mapped_column(String(500), nullable=False)
+    diff_summary: Mapped[dict[str, Any]] = mapped_column(JSON, default=dict, nullable=False)
+    observed_external_ids: Mapped[list[str]] = mapped_column(JSON, default=list, nullable=False)
+    decided_at: Mapped[datetime | None] = mapped_column(DateTime(timezone=True))
+    decided_by_user_id: Mapped[int | None] = mapped_column(ForeignKey("users.id"))
+    decision_note: Mapped[str | None] = mapped_column(String(500))
+
+
+class JobLifecycleEvent(TimestampMixin, Base):
+    __tablename__ = "job_lifecycle_events"
+    __table_args__ = (Index("ix_job_lifecycle_job_occurred", "job_posting_id", "occurred_at"),)
+
+    id: Mapped[int] = mapped_column(Integer, primary_key=True)
+    job_posting_id: Mapped[int] = mapped_column(ForeignKey("job_postings.id"), nullable=False)
+    source_id: Mapped[int] = mapped_column(ForeignKey("sources.id"), nullable=False)
+    scrape_run_id: Mapped[int | None] = mapped_column(ForeignKey("scrape_runs.id"))
+    event_type: Mapped[str] = mapped_column(String(40), nullable=False)
+    reason: Mapped[str] = mapped_column(String(255), nullable=False)
+    occurred_at: Mapped[datetime] = mapped_column(DateTime(timezone=True), default=utcnow, nullable=False)
 
 
 # The original implementation used `Source`; expose the milestone terminology

@@ -1,6 +1,6 @@
 [project]
 name = "hunt-board"
-version = "0.6.1"
+version = "0.6.2"
 description = "Backend-first job intelligence system for curated ATS sources."
 readme = "README.md"
 requires-python = ">=3.12"

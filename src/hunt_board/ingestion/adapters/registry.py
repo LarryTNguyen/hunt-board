@@ -32,6 +32,7 @@ def create_adapter(
     *,
     max_retries: int,
     retry_backoff_seconds: float,
+    retry_jitter_seconds: float = 0.25,
 ) -> ATSAdapter:
     try:
         factory = ADAPTER_REGISTRY[ats]
@@ -42,4 +43,5 @@ def create_adapter(
         client,
         max_retries=max_retries,
         retry_backoff_seconds=retry_backoff_seconds,
+        retry_jitter_seconds=retry_jitter_seconds,
     )
