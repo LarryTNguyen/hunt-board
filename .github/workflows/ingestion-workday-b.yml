@@ -1,8 +1,8 @@
-name: Production ingestion — Greenhouse
+name: Production ingestion — Workday B
 
 on:
   schedule:
-    - cron: "17 */2 * * *"
+    - cron: "47 1-23/2 * * *"
   workflow_dispatch:
 
 concurrency:
@@ -31,7 +31,5 @@ jobs:
       - run: uv run hunt-board sync-sources
       - run: >-
           uv run hunt-board ingest
-          --source databricks --source figma --source datadog --source cloudflare
-          --source vercel --source robinhood --source block --source coinbase
-          --source waymo --source door-dash --source discord --source reformation
-          --source marketaxess --source figma-board
+          --source dell --source mastercard --source target --source intel
+          --source general-motors --source disney --source workday
