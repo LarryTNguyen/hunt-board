@@ -32,10 +32,11 @@ function render() {
     <section class="kit-section" id="work"><header class="kit-head"><div><p class="utility-label">Kit 03 / Work shape</p><h2>Level and employment</h2></div></header><div class="kit-body"><span class="field-label">Experience levels</span>${choices('preferred_levels', levels, preferences.preferred_levels)}<span class="field-label">Employment types</span>${choices('employment_types', employmentTypes, preferences.employment_types)}<span class="field-label">Workplace preferences</span>${choices('workplace_preferences', workplaces, preferences.workplace_preferences)}<label class="control-field sponsorship-field"><span>Sponsorship requirement</span><select name="sponsorship_required"><option value="">No requirement</option><option value="true"${preferences.sponsorship_required === true ? ' selected' : ''}>Sponsorship must be available</option><option value="false"${preferences.sponsorship_required === false ? ' selected' : ''}>Sponsorship not required</option></select></label></div></section>
     <section class="kit-section" id="territory"><header class="kit-head"><div><p class="utility-label">Kit 04 / Territory</p><h2>Locations and countries</h2></div></header><div class="kit-body">${textLines('preferred_locations', 'Preferred cities or regions', preferences.preferred_locations, 'Seattle\nNew York')}${textLines('preferred_countries', 'Included countries', preferences.preferred_countries, 'US\nCanada')}${textLines('excluded_countries', 'Excluded countries', preferences.excluded_countries, 'Country code or name')}<div class="form-grid"><label><span class="field-label">Home location</span><input class="text-input" name="home_location" value="${esc(preferences.home_location || '')}" placeholder="Optional"></label><label><span class="field-label">Radius in miles</span><input class="text-input" name="radius_miles" type="number" min="0" max="500" value="${preferences.radius_miles || 0}"></label><label><span class="field-label">Country context</span><input class="text-input" name="country" value="${esc(preferences.country || '')}" placeholder="Optional"></label><label class="choice choice-single"><input type="checkbox" name="remote_allowed"${preferences.remote_allowed ? ' checked' : ''}> Remote roles are allowed</label></div></div></section>
     <section class="kit-section" id="compensation"><header class="kit-head"><div><p class="utility-label">Kit 05 / Ordering</p><h2>Compensation and score</h2></div><output class="threshold-output" for="minimum-score" data-threshold>${preferences.minimum_score_threshold}</output></header><div class="kit-body"><div class="form-grid"><label><span class="field-label">Minimum annual salary</span><input class="text-input" name="minimum_salary" type="number" min="0" step="1000" value="${preferences.minimum_salary ?? ''}" placeholder="Optional"></label><label><span class="field-label">Minimum route score</span><input class="range-input" id="minimum-score" name="minimum_score_threshold" type="range" min="0" max="100" step="1" value="${preferences.minimum_score_threshold}"></label></div><p>Jobs without salary data stay visible below confirmed matches. Salary is the first filter the relaxed feed may broaden.</p></div></section>
-    <div class="sticky-actions"><p class="form-status" data-status aria-live="polite"></p><button class="button button-primary" type="submit">Save and update feed</button></div>
+    <div class="sticky-actions"><p class="form-status" data-status aria-live="polite"></p><button class="button button-primary" type="submit">Save changes</button><button class="button button-quiet" type="button" data-rescore>Recalculate feed</button></div>
   </div></form>`;
   const form = host.querySelector('[data-form]');
   form.addEventListener('submit', save);
+  form.querySelector('[data-rescore]').addEventListener('click', rescore);
   form.elements.minimum_score_threshold.addEventListener('input', () => { form.querySelector('[data-threshold]').textContent = form.elements.minimum_score_threshold.value; });
   host.querySelector('[data-skip]')?.addEventListener('click', () => setOnboarding('skip'));
   host.querySelector('[data-complete]')?.addEventListener('click', () => setOnboarding('complete'));
@@ -55,7 +56,7 @@ async function save(event) {
   const button = form.querySelector('button[type="submit"]');
   const status = form.querySelector('[data-status]');
   setBusy(button, true);
-  status.textContent = 'Saving and recalculating the visible route…';
+  status.textContent = 'Saving preferences...';
   const sponsor = form.elements.sponsorship_required.value;
   const body = {
     selected_job_families: checked(form, 'selected_job_families'), related_job_families: checked(form, 'related_job_families'),
@@ -70,10 +71,27 @@ async function save(event) {
   try {
     preferences = await api.updatePreferences(body);
     onboarding = await api.updateOnboarding('complete');
-    status.textContent = 'Preferences saved. Visible results now use this route.';
-    makeToast('Preferences saved and feed updated.');
+    status.textContent = 'Preferences saved. Recalculate the feed when you are ready.';
+    makeToast('Preferences saved.');
     render();
   } catch (error) { status.textContent = error.message; makeToast(error.message, 'error'); }
+  setBusy(button, false);
+}
+
+async function rescore(event) {
+  const button = event.currentTarget;
+  const form = button.form;
+  const status = form.querySelector('[data-status]');
+  setBusy(button, true);
+  status.textContent = 'Recalculating the feed...';
+  try {
+    const result = await api.rescore();
+    status.textContent = `Feed recalculated: ${result.total_visible_jobs} visible of ${result.total_jobs_rescored} jobs.`;
+    makeToast('Feed recalculated.');
+  } catch (error) {
+    status.textContent = error.message;
+    makeToast(error.message, 'error');
+  }
   setBusy(button, false);
 }
 

@@ -142,6 +142,8 @@ def test_preferences_update_validation_and_rescore(client, db_session) -> None:
     )
     assert updated.status_code == 200
     assert updated.json()["include_keywords"] == ["Data Scientist"]
+    db_session.refresh(target)
+    assert target.ranking_score == 0
 
     response = client.post("/me/preferences/rescore")
     assert response.status_code == 200

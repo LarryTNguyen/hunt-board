@@ -20,6 +20,27 @@ def test_live_frontend_asset_is_served(client) -> None:
     assert "export async function request" in response.text
 
 
+def test_operations_formats_durations_as_minutes_and_seconds(client) -> None:
+    formatter = client.get("/app/assets/format.js").text
+    operations = client.get("/app/assets/pages/operations.js").text
+
+    assert "export function durationMs(value)" in formatter
+    assert "durationMs(metrics.average_source_duration_ms)" in operations
+    assert "durationMs(item.duration_ms)" in operations
+    assert "} ms" not in operations
+
+
+def test_preferences_save_and_rescore_are_separate_actions(client) -> None:
+    page = client.get("/app/preferences.html")
+    script = client.get("/app/assets/pages/preferences.js").text
+
+    assert page.status_code == 200
+    assert 'type="submit">Save changes' in script
+    assert 'data-rescore>Recalculate feed' in script
+    assert "api.updatePreferences(body)" in script
+    assert "api.rescore()" in script
+
+
 def test_job_detail_uses_one_versioned_module_graph(client) -> None:
     page = client.get("/app/job-detail.html")
     script = client.get("/app/assets/pages/job-detail.js?v=20260721-2")

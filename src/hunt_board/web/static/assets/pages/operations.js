@@ -1,6 +1,6 @@
 import '../navigation.js?v=20260722-4';
 import { api } from '../api.js?v=20260722-4';
-import { absoluteDate, escapeHtml as esc, label, relativeDate } from '../format.js?v=20260721-2';
+import { absoluteDate, durationMs, escapeHtml as esc, label, relativeDate } from '../format.js?v=20260721-2';
 import { loading, makeToast, renderEmpty, renderError } from '../ui.js?v=20260721-1';
 
 const statusHost = document.querySelector('[data-system-status]');
@@ -67,7 +67,7 @@ function renderDeploymentAndQueue() {
     ['Retries', metrics.retries_last_24_hours],
     ['Timeouts', metrics.timeouts_last_24_hours],
     ['Pending quarantines', metrics.quarantines_pending],
-    ['Average source time', `${metrics.average_source_duration_ms} ms`],
+    ['Average source time', durationMs(metrics.average_source_duration_ms)],
   ];
   metricsHost.innerHTML = cards.map(([name, value]) => `<article class="operation-stat"><small>${esc(name)}</small><strong>${esc(value)}</strong></article>`).join('');
 }
@@ -135,7 +135,7 @@ async function selectRun(runId) {
       renderEmpty(runDetail, 'No source records', 'This run did not inspect a source.');
       return;
     }
-    runDetail.innerHTML = `<div class="run-detail-head"><p class="utility-label">Run #${runId}</p><h3>Source metrics</h3></div>${items.map((item) => `<article class="source-run"><div><strong>${esc(item.source_slug)}</strong><span class="status status-${tone(item.status)}">${esc(label(item.status))}</span></div><dl><div><dt>Seen</dt><dd>${item.jobs_seen}</dd></div><div><dt>New</dt><dd>${item.new_jobs}</dd></div><div><dt>Updated</dt><dd>${item.updated_jobs}</dd></div><div><dt>Reactivated</dt><dd>${item.reactivated_jobs}</dd></div><div><dt>Closed</dt><dd>${item.closed_jobs}</dd></div><div><dt>Retries</dt><dd>${item.retry_count}</dd></div><div><dt>Timeouts</dt><dd>${item.timeout_count}</dd></div><div><dt>Parser failures</dt><dd>${item.parser_failure_count}</dd></div><div><dt>Duplicates</dt><dd>${item.duplicates_found}</dd></div><div><dt>Errors</dt><dd>${item.error_count}</dd></div><div><dt>Duration</dt><dd>${item.duration_ms ?? 0} ms</dd></div></dl>${item.error_message ? `<p class="source-error">${esc(item.error_message)}</p>` : ''}</article>`).join('')}`;
+    runDetail.innerHTML = `<div class="run-detail-head"><p class="utility-label">Run #${runId}</p><h3>Source metrics</h3></div>${items.map((item) => `<article class="source-run"><div><strong>${esc(item.source_slug)}</strong><span class="status status-${tone(item.status)}">${esc(label(item.status))}</span></div><dl><div><dt>Seen</dt><dd>${item.jobs_seen}</dd></div><div><dt>New</dt><dd>${item.new_jobs}</dd></div><div><dt>Updated</dt><dd>${item.updated_jobs}</dd></div><div><dt>Reactivated</dt><dd>${item.reactivated_jobs}</dd></div><div><dt>Closed</dt><dd>${item.closed_jobs}</dd></div><div><dt>Retries</dt><dd>${item.retry_count}</dd></div><div><dt>Timeouts</dt><dd>${item.timeout_count}</dd></div><div><dt>Parser failures</dt><dd>${item.parser_failure_count}</dd></div><div><dt>Duplicates</dt><dd>${item.duplicates_found}</dd></div><div><dt>Errors</dt><dd>${item.error_count}</dd></div><div><dt>Duration</dt><dd>${durationMs(item.duration_ms)}</dd></div></dl>${item.error_message ? `<p class="source-error">${esc(item.error_message)}</p>` : ''}</article>`).join('')}`;
   } catch (error) {
     renderError(runDetail, error, () => selectRun(runId));
   }

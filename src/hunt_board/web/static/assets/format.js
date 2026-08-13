@@ -22,6 +22,15 @@ export function score(value) {
   return Number.isFinite(number) ? Math.round(number) : 0;
 }
 
+export function durationMs(value) {
+  const milliseconds = Number(value);
+  if (!Number.isFinite(milliseconds) || milliseconds < 0) return '0m 0s';
+  const totalSeconds = Math.round(milliseconds / 1000);
+  const minutes = Math.floor(totalSeconds / 60);
+  const seconds = totalSeconds % 60;
+  return `${minutes}m ${seconds}s`;
+}
+
 export function truncate(value, length = 170) {
   const text = String(value || '').trim().replace(/\s+/g, ' ');
   return text.length > length ? `${text.slice(0, length - 1).trim()}…` : text;

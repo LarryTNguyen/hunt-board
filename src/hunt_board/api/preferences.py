@@ -38,7 +38,6 @@ def update_preferences(
     user.preferences_json = preferences_from_row(preference).model_dump(mode="json")
     db.commit()
     db.refresh(preference)
-    rescore_jobs(db, user, preference)
     logger.info(
         "preference.updated",
         extra={
