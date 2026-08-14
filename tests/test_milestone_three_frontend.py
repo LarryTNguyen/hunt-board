@@ -41,6 +41,12 @@ def test_preferences_save_and_rescore_are_separate_actions(client) -> None:
     assert "api.rescore()" in script
 
 
+def test_landing_page_basecamp_link_opens_the_app_home() -> None:
+    landing_page = Path(__file__).parents[1] / "landing-page.html"
+
+    assert 'href="/app/">Return to basecamp' in landing_page.read_text(encoding="utf-8")
+
+
 def test_job_detail_uses_one_versioned_module_graph(client) -> None:
     page = client.get("/app/job-detail.html")
     script = client.get("/app/assets/pages/job-detail.js?v=20260721-2")

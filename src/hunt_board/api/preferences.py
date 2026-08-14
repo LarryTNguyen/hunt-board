@@ -53,8 +53,42 @@ def rescore_existing_jobs(
     user: User = Depends(require_user),
     db: Session = Depends(get_db),
 ) -> dict:
-    preference = ensure_user_preference(db, user)
-    return rescore_jobs(db, user, preference)
+    logger.info(
+        "preference.rescore.started",
+        extra={
+            "event_name": "preference.rescore.started",
+            "event_data": {"user_id": user.id},
+        },
+    )
+    try:
+        preference = ensure_user_preference(db, user)
+        result = rescore_jobs(db, user, preference)
+    except Exception as exc:
+        logger.error(
+            "preference.rescore.failed",
+            extra={
+                "event_name": "preference.rescore.failed",
+                "event_data": {
+                    "user_id": user.id,
+                    "error_type": type(exc).__name__,
+                    "error_message": str(exc),
+                },
+            },
+        )
+        raise
+    logger.info(
+        "preference.rescore.completed",
+        extra={
+            "event_name": "preference.rescore.completed",
+            "event_data": {
+                "user_id": user.id,
+                "total_jobs_rescored": result["total_jobs_rescored"],
+                "total_visible_jobs": result["total_visible_jobs"],
+                "duration_ms": result["duration_ms"],
+            },
+        },
+    )
+    return result
 
 
 @router.get("/onboarding", response_model=OnboardingRead)

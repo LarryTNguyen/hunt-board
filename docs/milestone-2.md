@@ -19,7 +19,7 @@ Sort fields are `ranking_score`, `first_seen_at`, `last_seen_at`, `posted_at`, `
 
 Updates trim and case-insensitively deduplicate list values. Empty strings, unknown role groups/levels, out-of-range radii, and score thresholds outside 0-100 are rejected. The compatibility `users.preferences_json` snapshot is synchronized after successful changes.
 
-`PATCH /me/preferences` persists the canonical preferences and compatibility snapshot without rescoring, so the save request remains fast as the catalog grows. `POST /me/preferences/rescore` is a separate explicit operation that recomputes each stored job's ranking fields and the user's `job_matches` row without creating or deleting job postings. Its response reports considered/rescored and visible/low-ranked counts plus timing.
+`PATCH /me/preferences` persists the canonical preferences and compatibility snapshot without rescoring, so the save request remains fast as the catalog grows. `POST /me/preferences/rescore` is a separate explicit operation that recomputes each stored job's ranking fields and the user's `job_matches` row without creating or deleting job postings. Rescoring reads only ranking fields in bounded batches and bulk-writes each batch to keep web-process memory bounded. Its response reports considered/rescored and visible/low-ranked counts plus timing.
 
 ## Saved jobs
 
