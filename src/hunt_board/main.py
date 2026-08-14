@@ -55,9 +55,10 @@ def create_app() -> FastAPI:
     app = FastAPI(title="Hunt Board", version="0.6.2")
 
     @app.exception_handler(SQLAlchemyError)
-    async def database_error_handler(request: Request, _exc: SQLAlchemyError) -> JSONResponse:
+    async def database_error_handler(request: Request, exc: SQLAlchemyError) -> JSONResponse:
         metrics.database_error()
         request_id = getattr(request.state, "request_id", None)
+        original = getattr(exc, "orig", None)
         logger.error(
             "database.error",
             extra={
@@ -67,6 +68,9 @@ def create_app() -> FastAPI:
                     "request_id": request_id,
                     "trace_id": getattr(request.state, "trace_id", None),
                     "route": request.url.path,
+                    "error_type": type(exc).__name__,
+                    "database_error_type": type(original).__name__ if original else None,
+                    "database_error_message": str(original or exc),
                 },
             },
         )
