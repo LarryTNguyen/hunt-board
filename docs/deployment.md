@@ -67,6 +67,12 @@ Keep Supabase public sign-ups and Hunt Board invitations disabled until step 8.
    Create the first Supabase Auth admin through the provider's secure invitation
    flow, then insert/activate the matching Hunt Board profile using a reviewed,
    one-time owner procedure. Never paste a service-role key into the browser.
+
+For a single-instance free Docker web service without shell or pre-deploy
+access, the image startup command runs `alembic upgrade head` before Uvicorn.
+Migrations must therefore remain compatible with the previous application
+release during deployment. Production reference data belongs in reviewed,
+idempotent Alembic data migrations; never bypass the production seed guard.
 5. Sync the reviewed production source registry:
 
    ```bash
