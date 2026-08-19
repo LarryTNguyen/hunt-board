@@ -122,6 +122,6 @@ def saved_search_payload(
             filters,
         ).limit(preview_limit)
         payload["preview_jobs"] = [
-            job_read_payload(*row) for row in db.execute(statement).all()
+            job_read_payload(*row, include_descriptions=False) for row in db.execute(statement).all()
         ]
     return payload

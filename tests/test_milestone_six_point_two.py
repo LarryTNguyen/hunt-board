@@ -240,7 +240,8 @@ def test_redaction_and_deployment_document_contracts() -> None:
     checklist = (root / "docs" / "owner-ui-checklist-6.2.md").read_text(encoding="utf-8")
     assert all(term in deployment for term in ("alembic upgrade head", "rollback", "backup", "$7–$17"))
     assert all(f"## {step}." in checklist for step in range(1, 17))
-    assert "17 */2 * * *" in (root / ".github" / "workflows" / "ingestion-cron.yml").read_text(encoding="utf-8")
+    assert "17 */12 * * *" in (root / ".github" / "workflows" / "ingestion-cron.yml").read_text(encoding="utf-8")
+    assert "37 6 * * *" in (root / ".github" / "workflows" / "retention-cleanup.yml").read_text(encoding="utf-8")
 
 
 def test_operations_ui_contract_has_queue_quarantine_and_correlation(client) -> None:

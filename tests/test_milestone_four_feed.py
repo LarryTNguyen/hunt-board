@@ -14,6 +14,7 @@ from hunt_board.db.models import (
     User,
     UserJobState,
 )
+from hunt_board.jobs.query import job_row_statement
 
 
 def _job(source: Source, external_id: str, title: str, **overrides) -> JobPosting:
@@ -74,6 +75,20 @@ def test_feed_defaults_total_and_deterministic_pagination(client, db_session) ->
     assert first["limit"] == 1
     assert {first["items"][0]["id"], second["items"][0]["id"]} == {jobs[0].id, jobs[3].id}
     assert first["items"][0]["id"] != second["items"][0]["id"]
+    assert first["items"][0]["description_html"] is None
+    assert first["items"][0]["description_text"] is None
+
+
+def test_feed_query_defers_payloads_but_detail_loads_description(client, db_session) -> None:
+    _, jobs = _seed(db_session)
+    sql = str(job_row_statement(1).compile(db_session.get_bind())).lower()
+    assert "job_postings.raw_json," not in sql
+    assert "job_postings.description_html" not in sql
+    assert "job_postings.description_text" not in sql
+
+    detail = client.get(f"/jobs/{jobs[0].id}")
+    assert detail.status_code == 200
+    assert detail.json()["description_text"] == "Build distributed APIs and observability systems"
 
 
 def test_feed_structured_filters_application_state_and_posted_age(client, db_session) -> None:

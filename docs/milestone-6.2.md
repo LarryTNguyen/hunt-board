@@ -2,7 +2,7 @@
 
 Milestone 6.2 makes Hunt Board deployable without changing its core topology:
 one FastAPI/static web service, Supabase Auth/PostgreSQL, and a separate
-one-shot scan every two hours. Render is the isolated reference host and GitHub
+one-shot private-beta source-group scan every twelve hours. Render is the isolated reference host and GitHub
 Actions is the reference cron; Docker and application commands are portable.
 
 Real triggers now share PostgreSQL advisory locking plus a persisted queue with

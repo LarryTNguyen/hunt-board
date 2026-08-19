@@ -2,7 +2,7 @@ name: Production ingestion — Lever and Ashby A
 
 on:
   schedule:
-    - cron: "47 */2 * * *"
+    - cron: "47 */12 * * *"
   workflow_dispatch:
 
 concurrency:

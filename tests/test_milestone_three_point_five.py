@@ -150,7 +150,7 @@ def test_html_sanitizer_decodes_greenhouse_escaped_markup() -> None:
 
 
 @pytest.mark.asyncio()
-async def test_ingestion_sanitizes_normalized_fields_but_preserves_raw_json(db_session) -> None:
+async def test_ingestion_sanitizes_normalized_fields_and_keeps_raw_only_on_posting(db_session) -> None:
     unsafe = '<p onclick="x()">Hello</p><script>bad()</script>'
     service = IngestionService(
         str(SOURCE_FILE),
@@ -163,6 +163,8 @@ async def test_ingestion_sanitizes_normalized_fields_but_preserves_raw_json(db_s
     assert posting.description_text == "Hello"
     assert posting.raw_json == {"description": unsafe}
     assert version.description_html == "<p>Hello</p>"
+    assert version.raw_json == {}
+    assert version.raw_json_expires_at is None
 
 
 @pytest.mark.asyncio()

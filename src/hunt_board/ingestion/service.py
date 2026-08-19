@@ -50,7 +50,7 @@ from hunt_board.core.observability import (
 )
 
 
-RAW_JSON_RETENTION_DAYS = 60
+RAW_JSON_RETENTION_DAYS = 7
 logger = logging.getLogger(__name__)
 
 
@@ -626,7 +626,17 @@ class IngestionService:
         try:
             if fetch_result.error_message:
                 raise RuntimeError(fetch_result.error_message)
-            anomaly = self._anomaly_summary(db, source_row, fetch_result)
+            active_source_jobs = self._active_source_jobs(db, source_row)
+            active_by_external_id = {
+                job.external_job_id: job
+                for job in active_source_jobs
+                if job.external_job_id is not None
+            }
+            anomaly = self._anomaly_summary(
+                source_row,
+                fetch_result,
+                active_source_jobs,
+            )
             if anomaly is not None and source_config.slug not in self.approved_quarantine_sources:
                 source_summary.status = "quarantined"
                 source_summary.quarantine_status = "pending"
@@ -696,7 +706,12 @@ class IngestionService:
                         "scan.job.dedupe.span",
                         source_slug=source_config.slug,
                     ):
-                        decision = decide_dedupe(db, source_row, job)
+                        decision = decide_dedupe(
+                            db,
+                            source_row,
+                            job,
+                            active_by_external_id=active_by_external_id,
+                        )
                     if decision.reason == "same canonical apply_url":
                         source_summary.duplicates_found += 1
                     if dry_run:
@@ -752,6 +767,7 @@ class IngestionService:
                             source_config.close_after_missed_runs,
                             scrape_run,
                             self.max_job_age_days,
+                            active_jobs=active_source_jobs,
                         )
             source_summary.status = (
                 "completed"
@@ -941,8 +957,6 @@ class IngestionService:
             # The normalized posting is unchanged; only observation metadata must move.
             target.last_seen_at = now
             target.consecutive_missed_runs = 0
-            target.raw_json = job.raw_json
-            target.raw_json_expires_at = now + timedelta(days=RAW_JSON_RETENTION_DAYS)
             db.flush()
             return "unchanged", False, False
         outcome = "updated" if target else "new"
@@ -1087,8 +1101,7 @@ class IngestionService:
             (target.posting_url, job.posting_url),
             (target.apply_url, job.apply_url),
             (target.canonical_apply_url, canonicalize_url(job.apply_url)),
-            (target.description_html, job.description_html),
-            (target.description_text, job.description_text),
+            (target.description_hash, cls._description_hash(job)),
             (cls._comparable_datetime(target.posted_at), cls._comparable_datetime(expected_posted_at)),
             (cls._comparable_datetime(target.source_updated_at), cls._comparable_datetime(job.updated_at)),
             (target.ranking_score, ranking.score),
@@ -1117,8 +1130,7 @@ class IngestionService:
 
     @staticmethod
     def _record_version(db: Session, target: JobPosting, job: NormalizedJob) -> JobVersion | None:
-        description = job.description_text or job.description_html or ""
-        description_hash = hashlib.sha256(description.encode("utf-8")).hexdigest()
+        description_hash = IngestionService._description_hash(job)
         if target.description_hash == description_hash:
             return None
         target.description_hash = description_hash
@@ -1137,12 +1149,17 @@ class IngestionService:
                 description_hash=description_hash,
                 description_html=job.description_html,
                 description_text=job.description_text,
-                raw_json=job.raw_json,
-                raw_json_expires_at=datetime.now(timezone.utc) + timedelta(days=RAW_JSON_RETENTION_DAYS),
+                raw_json={},
+                raw_json_expires_at=None,
             )
             db.add(existing_version)
             db.flush()
         return existing_version
+
+    @staticmethod
+    def _description_hash(job: NormalizedJob) -> str:
+        description = job.description_text or job.description_html or ""
+        return hashlib.sha256(description.encode("utf-8")).hexdigest()
 
     @staticmethod
     def _user_preferences(db: Session, user: User) -> UserPreferences:
@@ -1322,22 +1339,28 @@ class IngestionService:
         match.matched = ranking.matched
         match.reasons = ranking.reasons
 
-    def _anomaly_summary(
-        self,
-        db: Session,
-        source: Source | None,
-        fetch_result: _SourceFetchResult,
-    ) -> tuple[str, dict[str, int | float]] | None:
-        if source is None or not fetch_result.lifecycle_authoritative:
-            return None
-        existing = list(
+    @staticmethod
+    def _active_source_jobs(db: Session, source: Source | None) -> list[JobPosting]:
+        if source is None:
+            return []
+        return list(
             db.scalars(
-                select(JobPosting).where(
+                select(JobPosting)
+                .where(
                     JobPosting.source_id == source.id,
                     JobPosting.active.is_(True),
                 )
             ).all()
         )
+
+    def _anomaly_summary(
+        self,
+        source: Source | None,
+        fetch_result: _SourceFetchResult,
+        existing: list[JobPosting],
+    ) -> tuple[str, dict[str, int | float]] | None:
+        if source is None or not fetch_result.lifecycle_authoritative:
+            return None
         current_count = len(fetch_result.jobs)
         baseline = source.last_successful_job_count
         if baseline is None:
@@ -1421,10 +1444,11 @@ class IngestionService:
         close_after_missed_runs: int,
         scrape_run: ScrapeRun | None = None,
         max_job_age_days: int = 365,
+        *,
+        active_jobs: list[JobPosting] | None = None,
     ) -> int:
-        active_jobs = db.scalars(
-            select(JobPosting).where(JobPosting.source_id == source.id, JobPosting.active.is_(True))
-        ).all()
+        if active_jobs is None:
+            active_jobs = self._active_source_jobs(db, source)
         now = datetime.now(timezone.utc)
         closed_count = 0
         for job in active_jobs:

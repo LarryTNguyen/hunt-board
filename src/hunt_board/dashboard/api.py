@@ -129,7 +129,7 @@ def _daily_dashboard(db: Session, user: User) -> dict:
             )
             .limit(10)
         ).all()
-        top_new_matches = [job_read_payload(*row) for row in top_rows]
+        top_new_matches = [job_read_payload(*row, include_descriptions=False) for row in top_rows]
 
     application_join = and_(
         Application.status_id == ApplicationStatus.id,

@@ -173,7 +173,7 @@ The equivalent API operations are `POST /admin/ingestion/run` and `POST /admin/i
 
 Source fetches run concurrently, while SQLAlchemy writes remain serial and transaction-isolated. Repeated postings are reported as `unchanged_jobs`; only new or materially changed postings count toward `total_upserted`. Running without `--source` scans only enabled sources that are due. Passing `--source` forces that configured source for local validation.
 
-Real runs are mutually exclusive. PostgreSQL uses a session advisory lock held on a dedicated connection; lock contention creates no run row and returns HTTP `409` (or a nonzero CLI exit). Dry runs do not take the lock. On startup, a lock-owning run marks older `running` records `abandoned` using `HUNT_BOARD_STALE_RUN_MINUTES` (default `120`). ATS HTML is sanitized before normalized storage while the original payload remains only in `raw_json`. Workday stores a deterministic `{listing, detail}` composite raw payload, and job APIs expose only normalized fields. Multi-location jobs expose an optional typed `locations` collection while existing scalar fields remain compatible.
+Real runs are mutually exclusive. PostgreSQL uses a session advisory lock held on a dedicated connection; lock contention creates no run row and returns HTTP `409` (or a nonzero CLI exit). Dry runs do not take the lock. On startup, a lock-owning run marks older `running` records `abandoned` using `HUNT_BOARD_STALE_RUN_MINUTES` (default `120`). ATS HTML is sanitized before normalized storage while the latest materially changed payload remains in `raw_json` for seven days. Unchanged scans do not rewrite or extend raw retention, and job-version history stores normalized descriptions without another raw payload copy. Workday stores its deterministic `{listing, detail}` composite payload for the same bounded window, and job APIs expose only normalized fields. Multi-location jobs expose an optional typed `locations` collection while existing scalar fields remain compatible.
 
 Inspect or purge expired raw payloads without deleting normalized records:
 
@@ -181,6 +181,8 @@ Inspect or purge expired raw payloads without deleting normalized records:
 uv run hunt-board purge-expired-raw --dry-run
 uv run hunt-board purge-expired-raw
 ```
+
+Production schedules this server-side bulk cleanup daily. Private-beta source groups run every twelve hours. Discovery, dashboard, and saved-search feeds use compact rows; full descriptions are loaded only when a user requests job detail.
 
 `hunt-board ingest` remains the canonical one-shot production unit and is the preferred target for platform cron. Without `--source` it selects enabled due sources, uses the global lock, finalizes metrics, and exits; when no source is due it exits successfully without creating an empty run. `hunt-board scheduler` wraps that same service in a separate signal-aware process. Run exactly one intended scheduler replica. Lock contention is a skipped tick, and later ticks continue after failures.
 

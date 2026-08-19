@@ -126,7 +126,7 @@ development convenience owner for migration and seed.
 ## Scheduled scans
 
 `.github/workflows/ingestion-cron.yml` invokes `uv run hunt-board ingest` at
-minute 17 every two hours. Configure the three production secrets named in the
+minute 17 every twelve hours. Configure the three production secrets named in the
 workflow and protect the GitHub `production` environment. The one-shot command
 uses the same PostgreSQL advisory lock and persisted pending state as admin,
 API, CLI, and the optional local scheduler. GitHub concurrency prevents two
@@ -139,7 +139,7 @@ For another provider, schedule exactly:
 HUNT_BOARD_PROCESS=cron uv run hunt-board ingest
 ```
 
-every two hours with a 70-minute platform timeout. Do not put the scan in a
+every twelve hours with a 70-minute platform timeout. Do not put the scan in a
 Vercel/serverless function and do not start the scheduler inside FastAPI.
 
 ## Smoke test

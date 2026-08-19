@@ -2,7 +2,7 @@ name: Production ingestion — Workday B
 
 on:
   schedule:
-    - cron: "47 1-23/2 * * *"
+    - cron: "47 1,13 * * *"
   workflow_dispatch:
 
 concurrency:

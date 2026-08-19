@@ -300,7 +300,7 @@ def saved_search_matches(
     ).all()
     items = []
     for row in rows:
-        payload = job_read_payload(*row)
+        payload = job_read_payload(*row, include_descriptions=False)
         if relaxed_filters and payload["id"] not in strict_ids:
             payload["match_type"] = "relaxed"
             payload["relaxed_filters"] = relaxed_filters

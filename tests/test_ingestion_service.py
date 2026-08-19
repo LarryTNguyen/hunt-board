@@ -144,13 +144,18 @@ async def test_description_changes_create_versions(db_session) -> None:
     service = IngestionService(str(SOURCE_FILE), adapter_overrides={"acme": FakeAdapter([changed])})
     await service.run(db_session, ["acme"])
 
-    assert len(db_session.scalars(select(JobVersion)).all()) == 2
+    versions = list(db_session.scalars(select(JobVersion)).all())
+    assert len(versions) == 2
+    assert all(version.raw_json == {} for version in versions)
+    assert all(version.raw_json_expires_at is None for version in versions)
 
 
 @pytest.mark.asyncio()
 async def test_repeated_job_is_counted_unchanged_without_an_upsert(db_session) -> None:
     service = IngestionService(str(SOURCE_FILE), adapter_overrides={"acme": FakeAdapter([_job()])})
     await service.run(db_session, ["acme"])
+    posting = db_session.scalar(select(JobPosting))
+    raw_payload_expiry = posting.raw_json_expires_at
 
     second = await service.run(db_session, ["acme"])
 
@@ -158,6 +163,7 @@ async def test_repeated_job_is_counted_unchanged_without_an_upsert(db_session) -
     assert second.total_updated_jobs == 0
     assert second.total_unchanged_jobs == 1
     assert second.total_upserted == 0
+    assert posting.raw_json_expires_at == raw_payload_expiry
     assert len(db_session.scalars(select(JobVersion)).all()) == 1
     run = db_session.scalar(select(ScrapeRun).order_by(ScrapeRun.id.desc()))
     source_run = db_session.scalar(

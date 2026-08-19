@@ -3,7 +3,7 @@ from __future__ import annotations
 from dataclasses import dataclass
 
 from sqlalchemy import func, select
-from sqlalchemy.orm import Session
+from sqlalchemy.orm import Session, undefer
 
 from hunt_board.db.models import JobPosting, Source
 from hunt_board.jobs.classification import apply_classification, classify_job
@@ -17,7 +17,13 @@ class ReclassificationResult:
 
 
 def reclassify_jobs(db: Session, *, include_overrides: bool = False) -> ReclassificationResult:
-    jobs = list(db.scalars(select(JobPosting).order_by(JobPosting.id)).all())
+    jobs = list(
+        db.scalars(
+            select(JobPosting)
+            .options(undefer(JobPosting.description_text))
+            .order_by(JobPosting.id)
+        ).all()
+    )
     updated = 0
     preserved = 0
     for job in jobs:

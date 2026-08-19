@@ -88,7 +88,7 @@ def list_jobs(
         return [_public_payload(row[0]) for row in rows]
     statement, relevance = apply_job_filters(job_row_statement(user.id if user else None), db, filters)
     statement = apply_job_sort(statement, sort_by, sort_order, relevance, filters).offset(offset).limit(limit)
-    return [job_read_payload(*row) for row in db.execute(statement).all()]
+    return [job_read_payload(*row, include_descriptions=False) for row in db.execute(statement).all()]
 
 
 @router.get("/feed", response_model=JobFeedRead)
@@ -192,7 +192,7 @@ def discovery_feed(
     statement = apply_job_sort(base_statement, sort_by, sort_order, relevance, final_filters).offset(offset).limit(limit)
     items = []
     for row in db.execute(statement).all():
-        payload = job_read_payload(*row)
+        payload = job_read_payload(*row, include_descriptions=False)
         if relaxed_filters and payload["id"] not in strict_ids:
             payload["match_type"] = "relaxed"
             payload["relaxed_filters"] = relaxed_filters

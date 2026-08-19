@@ -1,7 +1,7 @@
 from __future__ import annotations
 
 from sqlalchemy import and_, func, select
-from sqlalchemy.orm import Session
+from sqlalchemy.orm import Session, undefer
 
 from hunt_board.db.models import Application, ApplicationStatus, DiscardedJob, JobPosting, SavedJob, Source, UserJobState
 
@@ -55,6 +55,8 @@ def job_read_payload(
     application_id: int | None,
     application_status: ApplicationStatus | None,
     seen_at: datetime | None,
+    *,
+    include_descriptions: bool = True,
 ) -> dict:
     return {
         "id": job.id,
@@ -78,8 +80,8 @@ def job_read_payload(
         "company_logo_url": source.company_logo_url if source else None,
         "posting_url": job.posting_url,
         "apply_url": job.apply_url,
-        "description_html": job.description_html,
-        "description_text": job.description_text,
+        "description_html": job.description_html if include_descriptions else None,
+        "description_text": job.description_text if include_descriptions else None,
         "active": job.active,
         "duplicate_status": job.duplicate_status,
         "duplicate_of_job_id": job.duplicate_of_job_id,
@@ -146,4 +148,8 @@ def get_job_with_user_state(db: Session, job_id: int, user_id: int | None) -> tu
         .outerjoin(Application, application_join)
         .outerjoin(ApplicationStatus, ApplicationStatus.id == Application.status_id)
         .where(JobPosting.id == job_id)
+        .options(
+            undefer(JobPosting.description_html),
+            undefer(JobPosting.description_text),
+        )
     ).one_or_none()

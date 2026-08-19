@@ -1,0 +1,27 @@
+name: Production retention cleanup
+
+on:
+  schedule:
+    - cron: "37 6 * * *"
+  workflow_dispatch:
+
+concurrency:
+  group: hunt-board-production-retention
+  cancel-in-progress: false
+
+jobs:
+  purge-expired-raw:
+    runs-on: ubuntu-latest
+    timeout-minutes: 20
+    environment: production
+    env:
+      DATABASE_URL: ${{ secrets.HUNT_BOARD_PRODUCTION_DATABASE_URL }}
+      HUNT_BOARD_ENVIRONMENT: production
+      HUNT_BOARD_RELEASE: ${{ github.sha }}
+      HUNT_BOARD_DEPLOYMENT_ID: github-actions-${{ github.run_id }}
+      HUNT_BOARD_PROCESS: retention
+    steps:
+      - uses: actions/checkout@v4
+      - uses: astral-sh/setup-uv@v6
+      - run: uv sync --frozen --no-dev
+      - run: uv run hunt-board purge-expired-raw

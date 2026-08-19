@@ -1,8 +1,10 @@
 from __future__ import annotations
 
 from datetime import datetime, timezone
+from pathlib import Path
 
 from hunt_board.db.models import JobPosting, ScrapeRun, Source
+from hunt_board.ingestion.sources import load_sources
 
 
 def test_health(client) -> None:
@@ -61,21 +63,13 @@ def test_admin_scrape_runs_api(client, db_session) -> None:
 
 
 def test_admin_source_sync_api(client) -> None:
+    configured = load_sources(Path(__file__).parents[1] / "data" / "sources.yaml")
     response = client.post("/admin/sources/sync-from-yaml")
 
     assert response.status_code == 200
-    assert response.json()["created"] == 9
+    assert response.json()["created"] == len(configured)
     sources = client.get("/admin/sources")
     assert sources.status_code == 200
-    assert {source["slug"] for source in sources.json()} == {
-        "discord",
-        "highlevel",
-        "notion",
-        "workday",
-        "figma",
-        "harvey",
-        "marketaxess",
-        "reformation",
-        "replit",
-    }
+    assert {source["slug"] for source in sources.json()} == {source.slug for source in configured}
+    assert "figma-board" not in {source["slug"] for source in sources.json()}
     assert all(source["company_logo_url"] for source in sources.json())

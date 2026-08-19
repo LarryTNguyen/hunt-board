@@ -289,6 +289,9 @@ async function persistSeen(job) {
 
 async function openDrawer(job, updateHistory = true) {
   if (updateHistory && currentState.job !== job.id) updateUrl({ job: job.id }, { resetOffset: false, load: false });
+  if (!isAnonymous && job.description_html == null && job.description_text == null) {
+    Object.assign(job, await api.job(job.id));
+  }
   const official = safeUrl(job.apply_url) || safeUrl(job.posting_url);
   const relevance = rankingSignals(job);
   drawer.setAttribute('aria-hidden', 'false');
